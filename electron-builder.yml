@@ -1,0 +1,57 @@
+# electron-builder configuration for the AMC-WebUI desktop build.
+#
+# The packaged app is a thin Electron shell plus two Node servers, so the
+# resources payload holds the built frontend (dist/), the web server shim and a
+# self-contained API runtime produced by `pnpm deploy` (desktop-runtime/), which
+# already contains server/dist plus every dependency it imports.
+appId: com.amcwebui.desktop
+productName: AMC WebUI
+copyright: Copyright © AMC-WebUI contributors
+
+directories:
+  output: release
+  buildResources: build-resources
+
+# Electron itself only needs the main process; everything else is a resource.
+files:
+  - electron/main.cjs
+  - package.json
+
+# Runtime payload, laid out under resources/app so main.cjs can reach it with
+# process.resourcesPath.
+extraResources:
+  - from: dist
+    to: app/dist
+  - from: electron/web-server.cjs
+    to: app/electron/web-server.cjs
+  - from: desktop-runtime
+    to: app/server-runtime
+    filter:
+      - '**/*'
+
+asar: true
+
+win:
+  icon: build-resources/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: ${productName}-${version}-install-${arch}.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-portable-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AMC WebUI
+
+linux:
+  icon: build-resources/icon.png
+  target: [dir]
+  category: Development

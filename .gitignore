@@ -49,3 +49,8 @@ tmp-live-artifact-demo/
 
 # Local Codex desktop state
 .codex-dev-*
+
+# Desktop build outputs and the deployed server runtime
+release/
+desktop-runtime/
+build-resources/icon.ico
