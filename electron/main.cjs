@@ -11,12 +11,34 @@ const { app, BrowserWindow, shell, dialog, Menu } = require('electron');
 const path = require('node:path');
 const net = require('node:net');
 const http = require('node:http');
+const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
 const isDev = !app.isPackaged;
 const APP_ROOT = isDev ? path.join(__dirname, '..') : path.join(process.resourcesPath, 'app');
 // Dev runs from the repo; a packaged build reads the deployed runtime payload.
 const SERVER_ROOT = isDev ? path.join(APP_ROOT, 'server') : path.join(APP_ROOT, 'server-runtime');
+
+// A packaged GUI app has no console on Windows, so capture everything the
+// child processes print. Without this, a startup crash is invisible.
+const LOG_DIR = path.join(app.getPath('userData'), 'logs');
+const LOG_FILE = path.join(LOG_DIR, 'desktop.log');
+let logStream = null;
+
+function initLog() {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
+  } catch {
+    logStream = null; // Logging is best effort; never block startup on it.
+  }
+}
+
+function log(tag, message) {
+  const line = `[${new Date().toISOString()}] [${tag}] ${message}`;
+  if (logStream) logStream.write(line + '\n');
+  process.stdout.write(line + '\n');
+}
 
 let mainWindow = null;
 let apiProcess = null;
@@ -71,18 +93,27 @@ function spawnNode(args, env) {
 }
 
 function pipeLogs(child, tag) {
-  child.stdout.on('data', (d) => process.stdout.write(`[${tag}] ${d}`));
-  child.stderr.on('data', (d) => process.stderr.write(`[${tag}] ${d}`));
+  child.stdout.on('data', (d) => log(tag, String(d).trimEnd()));
+  child.stderr.on('data', (d) => log(tag, String(d).trimEnd()));
+  // spawn() failures (missing entry file, bad cwd) surface only as an error
+  // event; without a listener they become unhandled exceptions.
+  child.on('error', (error) => log(tag, `spawn error: ${error && error.message}`));
 }
 
-function startApiServer(port) {
+function startApiServer(port, onExit) {
   const entry = path.join(SERVER_ROOT, 'dist', 'server', 'src', 'index.js');
   const child = spawnNode([entry], { PORT: String(port) });
   pipeLogs(child, 'api');
+  // The API server crashes fast on a broken install, so report the last output
+  // lines instead of only a bare exit code.
+  let tail = '';
+  const collect = (d) => {
+    tail = (tail + String(d)).slice(-1500);
+  };
+  child.stdout.on('data', collect);
+  child.stderr.on('data', collect);
   child.on('exit', (code) => {
-    if (code !== 0 && !app.isQuitting) {
-      dialog.showErrorBox('API server stopped', `The local API server exited with code ${code}.`);
-    }
+    if (!app.isQuitting) onExit(code, tail);
   });
   return child;
 }
@@ -128,17 +159,53 @@ async function createWindow() {
   });
 }
 
+function fail(title, detail) {
+  log('main', `${title}: ${detail}`);
+  dialog.showErrorBox(title, `${detail}\n\nLog file: ${LOG_FILE}`);
+  app.quit();
+}
+
 async function boot() {
+  initLog();
+  log('main', `packaged=${app.isPackaged} appRoot=${APP_ROOT} serverRoot=${SERVER_ROOT}`);
+
+  // Fail with an actionable message when the payload is incomplete, which is
+  // what a bad build or a partial extraction looks like.
+  const apiEntry = path.join(SERVER_ROOT, 'dist', 'server', 'src', 'index.js');
+  if (!fs.existsSync(apiEntry)) {
+    fail('Installation is incomplete', `Missing API server entry:\n${apiEntry}`);
+    return false;
+  }
+
   apiPort = await findFreePort();
   webPort = await findFreePort();
+  log('main', `ports api=${apiPort} web=${webPort}`);
 
-  apiProcess = startApiServer(apiPort);
-  await waitForHttp(apiPort);
+  // Resolve the first failure instead of letting the startup timeout fire, so
+  // the user sees the real cause rather than "did not respond in time".
+  const apiFailure = new Promise((_, reject) => {
+    apiProcess = startApiServer(apiPort, (code, tail) => {
+      reject(new Error(`The API server exited with code ${code}.\n\n${tail.trim() || '(no output)'}`));
+    });
+  });
+
+  try {
+    await Promise.race([waitForHttp(apiPort), apiFailure]);
+  } catch (error) {
+    fail('API server failed to start', String(error && error.message ? error.message : error));
+    return false;
+  }
 
   webProcess = startWebServer(webPort, apiPort);
-  await waitForHttp(webPort);
+  try {
+    await waitForHttp(webPort);
+  } catch (error) {
+    fail('Web server failed to start', String(error && error.message ? error.message : error));
+    return false;
+  }
 
   await createWindow();
+  return true;
 }
 
 function shutdown() {
@@ -156,12 +223,12 @@ function shutdown() {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
-  try {
-    await boot();
-  } catch (error) {
-    dialog.showErrorBox('Failed to start', String(error && error.message ? error.message : error));
-    app.quit();
-  }
+  // boot() reports its own failures with the child process output.
+  const started = await boot().catch((error) => {
+    fail('Failed to start', String(error && error.message ? error.message : error));
+    return false;
+  });
+  if (!started) return;
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
