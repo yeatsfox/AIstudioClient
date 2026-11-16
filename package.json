@@ -36,7 +36,11 @@
     "docs:dev": "pnpm --filter docs-site dev",
     "docs:build": "pnpm --filter docs-site build",
     "docs:preview": "pnpm --filter docs-site preview",
-    "docs:deploy": "pnpm run docs:build && wrangler pages deploy docs-site/dist --project-name=all-model-chat-docs --branch=main --commit-dirty=true"
+    "docs:deploy": "pnpm run docs:build && wrangler pages deploy docs-site/dist --project-name=all-model-chat-docs --branch=main --commit-dirty=true",
+    "build:desktop": "PYODIDE_ASSETS_EXTERNAL=true vite build && pnpm build:api",
+    "desktop": "pnpm build:desktop && electron .",
+    "dist:win": "pnpm build:desktop && electron-builder --win --x64",
+    "dist:linux": "pnpm build:desktop && electron-builder --linux"
   },
   "dependencies": {
     "@codemirror/lang-cpp": "^6.0.3",
@@ -127,6 +131,8 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "^4.1.12",
+    "electron": "^38.8.6",
+    "electron-builder": "^25.0.0",
     "eslint": "^10.1.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -149,5 +155,6 @@
     "workbox-routing": "^7.4.0",
     "workbox-strategies": "^7.4.0",
     "workbox-window": "^7.4.0"
-  }
+  },
+  "main": "electron/main.cjs"
 }

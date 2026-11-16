@@ -10,6 +10,7 @@ allowBuilds:
   '@google/genai': true
   canvas: true
   core-js: true
+  electron: set this to true or false
   esbuild: true
   protobufjs: true
   sharp: true
