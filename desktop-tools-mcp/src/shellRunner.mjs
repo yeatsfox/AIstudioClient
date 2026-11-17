@@ -19,21 +19,26 @@ let cachedShell = null;
 
 /**
  * Prefer PowerShell 7+ (`pwsh`) and fall back to Windows PowerShell 5.1.
+ *
+ * Candidates from both platforms are tried rather than only the current one:
+ * a Windows build running under a compatibility layer reports a non-win32
+ * platform, and probing only `.exe` names there would wrongly report "not
+ * found". Trying a name that does not exist costs one failed spawn, which is
+ * far cheaper than telling the user their machine has no PowerShell.
+ *
  * Resolved once and cached: this check spawns a process, so doing it per call
  * would add a noticeable delay to every command.
  */
 export async function detectShell() {
   if (cachedShell) return cachedShell;
 
-  const candidates = IS_WINDOWS
-    ? [
-        { command: 'pwsh.exe', label: 'PowerShell 7' },
-        { command: 'powershell.exe', label: 'Windows PowerShell' },
-      ]
-    : [
-        { command: 'pwsh', label: 'PowerShell 7' },
-        { command: 'powershell', label: 'PowerShell' },
-      ];
+  const windowsFirst = process.platform === 'win32';
+  const candidates = [
+    { command: windowsFirst ? 'pwsh.exe' : 'pwsh', label: 'PowerShell 7' },
+    { command: windowsFirst ? 'powershell.exe' : 'powershell', label: 'Windows PowerShell' },
+    { command: windowsFirst ? 'pwsh' : 'pwsh.exe', label: 'PowerShell 7' },
+    { command: windowsFirst ? 'powershell' : 'powershell.exe', label: 'Windows PowerShell' },
+  ].filter((candidate, index, all) => all.findIndex((c) => c.command === candidate.command) === index);
 
   for (const candidate of candidates) {
     const ok = await new Promise((resolve) => {
