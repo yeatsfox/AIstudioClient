@@ -119,7 +119,9 @@ function startApiServer(port, onExit) {
 }
 
 function startWebServer(port, upstreamPort) {
-  const entry = path.join(__dirname, 'web-server.cjs');
+  // Not __dirname: inside a packaged build that points into app.asar, while
+  // web-server.cjs ships as an extraResource next to the other payload.
+  const entry = path.join(APP_ROOT, 'electron', 'web-server.cjs');
   const child = spawnNode([entry], {
     PORT: String(port),
     WEB_ROOT: path.join(APP_ROOT, 'dist'),
@@ -174,6 +176,15 @@ async function boot() {
   const apiEntry = path.join(SERVER_ROOT, 'dist', 'server', 'src', 'index.js');
   if (!fs.existsSync(apiEntry)) {
     fail('Installation is incomplete', `Missing API server entry:\n${apiEntry}`);
+    return false;
+  }
+  const webEntry = path.join(APP_ROOT, 'electron', 'web-server.cjs');
+  if (!fs.existsSync(webEntry)) {
+    fail('Installation is incomplete', `Missing web server entry:\n${webEntry}`);
+    return false;
+  }
+  if (!fs.existsSync(path.join(APP_ROOT, 'dist', 'index.html'))) {
+    fail('Installation is incomplete', `Missing frontend build:\n${path.join(APP_ROOT, 'dist')}`);
     return false;
   }
 
