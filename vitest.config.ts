@@ -26,6 +26,8 @@ export default defineConfig({
       'scripts/**/*.{test,spec}.ts',
       'server/src/**/*.{test,spec}.ts',
       'shared/**/*.{test,spec}.ts',
+      // The bundled local-tools MCP server is plain ESM JavaScript.
+      'desktop-tools-mcp/src/**/*.test.mjs',
     ],
     css: true,
   },

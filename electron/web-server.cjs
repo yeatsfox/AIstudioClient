@@ -44,6 +44,22 @@ function writeRuntimeConfig() {
     liveApiBaseUrl: JSON.parse(jsonStringOrNull(process.env.RUNTIME_LIVE_API_BASE_URL)),
     thirdPartyProxyUrl: JSON.parse(jsonStringOrNull(process.env.RUNTIME_THIRD_PARTY_PROXY_URL)),
     pyodideBaseUrl: JSON.parse(jsonStringOrNull(process.env.RUNTIME_PYODIDE_BASE_URL)),
+    // Desktop build only: tells the frontend that local file/PowerShell tools
+    // are available, where the MCP server lives, and which directories it may
+    // touch. Absent in the Docker image, where the server has no user disk.
+    desktopTools: (() => {
+      const serverPath = trim(process.env.RUNTIME_DESKTOP_TOOLS_SERVER);
+      if (!serverPath) return null;
+      const roots = String(process.env.RUNTIME_DESKTOP_TOOLS_ROOTS || '')
+        .split(path.delimiter)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+      return {
+        serverPath,
+        roots,
+        command: trim(process.env.RUNTIME_DESKTOP_TOOLS_COMMAND) || process.execPath,
+      };
+    })(),
   };
   const content = `window.__AMC_RUNTIME_CONFIG__ = ${JSON.stringify({ ...(globalThis.__AMC_RUNTIME_CONFIG__ || {}), ...config }, null, 2)};`;
   fs.writeFileSync(path.join(ROOT, 'runtime-config.js'), content);

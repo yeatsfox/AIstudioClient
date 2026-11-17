@@ -1,0 +1,11 @@
+{
+  "name": "desktop-tools-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local file and PowerShell tools for the AMC WebUI desktop build",
+  "main": "server.mjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1"
+  }
+}

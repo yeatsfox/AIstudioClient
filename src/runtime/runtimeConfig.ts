@@ -8,7 +8,8 @@ type RuntimeConfigKey =
   | 'apiProxyUrl'
   | 'liveApiBaseUrl'
   | 'thirdPartyProxyUrl'
-  | 'pyodideBaseUrl';
+  | 'pyodideBaseUrl'
+  | 'desktopTools';
 
 type RuntimeConfigShape = Partial<Record<RuntimeConfigKey, unknown>>;
 
@@ -55,6 +56,41 @@ function getRuntimeConfig(): RuntimeConfigShape | undefined {
 
 export function getPyodideBaseUrl(): string | null {
   return readNullableString(getRuntimeConfig()?.pyodideBaseUrl) ?? null;
+}
+
+/** Local file/PowerShell tool server injected by the desktop shell. */
+export interface DesktopToolsConfig {
+  /** Absolute path to the MCP server entry script. */
+  serverPath: string;
+  /** Directories the server is allowed to read and write. */
+  roots: string[];
+  /** Node-compatible binary used to launch the server. */
+  command: string;
+}
+
+/**
+ * Present only in the desktop build. The Docker image leaves this unset because
+ * the server container has no access to the user's disk, so exposing a
+ * filesystem tool there would be misleading.
+ */
+export function getDesktopToolsConfig(): DesktopToolsConfig | null {
+  const raw = getRuntimeConfig()?.desktopTools;
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const serverPath = readNullableString(record.serverPath);
+  const command = readNullableString(record.command);
+  if (!serverPath || !command) {
+    return null;
+  }
+
+  const roots = Array.isArray(record.roots)
+    ? record.roots.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : [];
+
+  return { serverPath, command, roots };
 }
 
 /**

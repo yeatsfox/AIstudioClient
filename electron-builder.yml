@@ -28,6 +28,14 @@ extraResources:
     to: app/server-runtime
     filter:
       - '**/*'
+  # Local file + PowerShell MCP server. Kept outside the asar because main.cjs
+  # spawns server.mjs as a plain Node script.
+  - from: desktop-tools-mcp
+    to: app/desktop-tools-mcp
+    filter:
+      - '**/*'
+      - '!**/*.test.mjs'
+      - '!.npmrc'
 
 asar: true
 
