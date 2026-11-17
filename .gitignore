@@ -54,3 +54,6 @@ tmp-live-artifact-demo/
 release/
 desktop-runtime/
 build-resources/icon.ico
+desktop-tools-mcp/node_modules/
+main.cjs
+desktop-tools-mcp/_trace.mjs

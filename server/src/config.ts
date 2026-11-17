@@ -5,6 +5,12 @@ export interface ThirdPartyProxyRoute {
 
 export interface ApiServerConfig {
   port: number;
+  /**
+   * Interface the API binds to. Defaults to 0.0.0.0, which is what the Docker
+   * image needs. The desktop build sets 127.0.0.1: it enables stdio MCP, so
+   * exposing the port on a LAN would let anyone run local commands.
+   */
+  host: string;
   geminiApiBase: string;
   geminiApiKey?: string;
   liveGeminiApiKey?: string;
@@ -26,6 +32,7 @@ interface EnvLike {
 }
 
 const DEFAULT_PORT = 3001;
+const DEFAULT_HOST = '0.0.0.0';
 const DEFAULT_GEMINI_API_BASE = 'https://generativelanguage.googleapis.com';
 const DEFAULT_LIVE_WS_IDLE_TIMEOUT_MS = 300_000;
 
@@ -123,6 +130,7 @@ function parseThirdPartyRoutes(rawRoutes: string | undefined): Record<string, Th
 export function loadConfig(env: EnvLike = process.env): ApiServerConfig {
   return {
     port: parsePort(env.PORT),
+    host: env.HOST?.trim() || DEFAULT_HOST,
     geminiApiBase: env.GEMINI_API_BASE?.trim() || DEFAULT_GEMINI_API_BASE,
     geminiApiKey: env.GEMINI_API_KEY?.trim() || undefined,
     liveGeminiApiKey: env.LIVE_GEMINI_API_KEY?.trim() || undefined,

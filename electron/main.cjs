@@ -46,6 +46,23 @@ let webProcess = null;
 let apiPort = 0;
 let webPort = 0;
 
+/**
+ * Workspace folders passed with `--workspace <dir>` on the command line. The
+ * shortcut the installer creates can pin a folder, so launching the app for a
+ * specific project does not require editing settings first.
+ */
+const workspaceRoots = (() => {
+  const raw = process.argv.slice(1);
+  const collected = [];
+  for (let i = 0; i < raw.length; i += 1) {
+    if (raw[i] === '--workspace' && raw[i + 1]) {
+      collected.push(path.resolve(raw[i + 1]));
+      i += 1;
+    }
+  }
+  return collected;
+})();
+
 /** Ask the OS for a free port so another instance or other software cannot collide. */
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -102,7 +119,11 @@ function pipeLogs(child, tag) {
 
 function startApiServer(port, onExit) {
   const entry = path.join(SERVER_ROOT, 'dist', 'server', 'src', 'index.js');
-  const child = spawnNode([entry], { PORT: String(port) });
+  // stdio MCP servers can run arbitrary local commands, so the API disables
+  // them by default. The desktop build needs them for its bundled file /
+  // PowerShell server, and it is safe here because the API listens on loopback
+  // only (spawnNode/env below) and never on a network interface.
+  const child = spawnNode([entry], { PORT: String(port), HOST: '127.0.0.1', ENABLE_MCP_STDIO: 'true' });
   pipeLogs(child, 'api');
   // The API server crashes fast on a broken install, so report the last output
   // lines instead of only a bare exit code.
@@ -122,13 +143,44 @@ function startWebServer(port, upstreamPort) {
   // Not __dirname: inside a packaged build that points into app.asar, while
   // web-server.cjs ships as an extraResource next to the other payload.
   const entry = path.join(APP_ROOT, 'electron', 'web-server.cjs');
+  // The local tools MCP server ships beside the other payload, outside the
+  // asar so it can be spawned as a plain Node script.
+  const toolsServer = path.join(APP_ROOT, 'desktop-tools-mcp', 'server.mjs');
+  const desktopEnv = {};
+  if (fs.existsSync(toolsServer)) {
+    desktopEnv.RUNTIME_DESKTOP_TOOLS_SERVER = toolsServer;
+    desktopEnv.RUNTIME_DESKTOP_TOOLS_COMMAND = process.execPath;
+    const roots = resolveWorkspaceRoots();
+    if (roots.length > 0) {
+      desktopEnv.RUNTIME_DESKTOP_TOOLS_ROOTS = roots.join(path.delimiter);
+    }
+  }
   const child = spawnNode([entry], {
     PORT: String(port),
     WEB_ROOT: path.join(APP_ROOT, 'dist'),
     API_UPSTREAM: `http://127.0.0.1:${upstreamPort}`,
+    ...desktopEnv,
   });
   pipeLogs(child, 'web');
   return child;
+}
+
+/**
+ * Directories the local tools may touch, from `--workspace DIR` (repeatable).
+ * Without an explicit choice the Documents folder is used, which is useful but
+ * nowhere near as risky as defaulting to a whole drive.
+ */
+function resolveWorkspaceRoots() {
+  const roots = Array.isArray(workspaceRoots) && workspaceRoots.length > 0
+    ? workspaceRoots
+    : [path.join(app.getPath('documents'))];
+  return roots.filter((dir) => {
+    try {
+      return fs.statSync(dir).isDirectory();
+    } catch {
+      return false;
+    }
+  });
 }
 
 async function createWindow() {
