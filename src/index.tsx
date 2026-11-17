@@ -9,6 +9,7 @@ import { initLocalJsVirtualMcpServer } from './features/local-js/localJsVirtualM
 import { initChatMemoryVirtualMcpServer } from './features/chat-memory/chatMemoryVirtualMcpServer';
 import { initLibraryVirtualMcpServer } from './features/library-search/libraryVirtualMcpServer';
 import { initDesktopToolsMcpServer } from './features/desktop-tools/desktopToolsServer';
+import { useWorkspaceStore } from './stores/workspaceStore';
 
 initProviderVirtualMcpServer();
 initSettingsVirtualMcpServer();
@@ -16,6 +17,9 @@ initLocalPythonVirtualMcpServer();
 initLocalJsVirtualMcpServer();
 initChatMemoryVirtualMcpServer();
 initLibraryVirtualMcpServer();
+// The workspace list decides which folders the local tools may touch, so it is
+// loaded before the desktop server registers its arguments.
+void useWorkspaceStore.getState().load();
 // Desktop build only: registers the bundled file/PowerShell MCP server. A
 // no-op on the web where no desktopTools config is injected.
 initDesktopToolsMcpServer();

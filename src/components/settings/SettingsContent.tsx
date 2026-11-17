@@ -6,6 +6,7 @@ import { AppearanceSection } from './sections/AppearanceSection';
 import { DataManagementSection } from './sections/DataManagementSection';
 import { ModelsSection } from './sections/ModelsSection';
 import { McpSection } from './sections/McpSection';
+import { WorkspacesSection } from './sections/WorkspacesSection';
 import { ShortcutsSection } from './sections/ShortcutsSection';
 import { AboutSection } from './sections/AboutSection';
 import { ProviderSettingsSection } from './sections/providers/ProviderSettingsSection';
@@ -173,6 +174,12 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
       {activeTab === 'mcp' && (
         <div className={animClass}>
           <McpSection settings={currentSettings} onUpdate={updateSetting} />
+        </div>
+      )}
+
+      {activeTab === 'workspaces' && (
+        <div className={animClass}>
+          <WorkspacesSection />
         </div>
       )}
 

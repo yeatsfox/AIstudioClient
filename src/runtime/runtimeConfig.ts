@@ -16,6 +16,15 @@ type RuntimeConfigShape = Partial<Record<RuntimeConfigKey, unknown>>;
 declare global {
   interface Window {
     __AMC_RUNTIME_CONFIG__?: RuntimeConfigShape;
+    /**
+     * Present only in the desktop build (see electron/preload.cjs). The browser
+     * sandbox cannot open a native folder picker, so this is how a user adds a
+     * local directory to their workspace list.
+     */
+    __AMC_DESKTOP__?: {
+      pickDirectory: () => Promise<{ path: string; title: string } | null>;
+      isDesktop: true;
+    };
   }
 }
 

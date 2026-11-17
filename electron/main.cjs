@@ -7,7 +7,7 @@
 //   - web server : electron/web-server.cjs            (serves dist/, proxies /api)
 // Running them as real processes keeps the runtime identical to production, so
 // no application code depends on Electron-specific behaviour.
-const { app, BrowserWindow, shell, dialog, Menu } = require('electron');
+const { app, BrowserWindow, shell, dialog, Menu, ipcMain } = require('electron');
 const path = require('node:path');
 const net = require('node:net');
 const http = require('node:http');
@@ -45,6 +45,16 @@ let apiProcess = null;
 let webProcess = null;
 let apiPort = 0;
 let webPort = 0;
+
+/**
+ * Folders the user confirmed through the native picker during this run.
+ *
+ * The web server asks the main process to open the dialog and reports back the
+ * chosen path; the tools server then accepts it. Keeping this list here (rather
+ * than trusting whatever the frontend sends) means a page that never opened a
+ * dialog cannot widen its own permissions.
+ */
+const confirmedWorkspaces = new Set();
 
 /**
  * Workspace folders passed with `--workspace <dir>` on the command line. The
@@ -196,6 +206,9 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Only the folder picker is bridged, and it exposes no path of its own:
+      // the main process owns the dialog and the validation.
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   });
 
@@ -211,6 +224,23 @@ async function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+/**
+ * Canonicalize a directory the renderer claims it already picked.
+ *
+ * `fs.realpath` collapses `..`, trailing slashes and symlinks, so the value
+ * stored in the workspace record is exactly the string the tools server will
+ * compare against. Anything that is not an existing directory is rejected.
+ */
+function resolveExistingDirectory(candidate) {
+  if (typeof candidate !== 'string' || !candidate.trim()) return null;
+  try {
+    const resolved = fs.realpathSync(path.resolve(candidate));
+    return fs.statSync(resolved).isDirectory() ? resolved : null;
+  } catch {
+    return null;
+  }
 }
 
 function fail(title, detail) {
@@ -286,6 +316,26 @@ function shutdown() {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
+
+  ipcMain.handle('amc:pick-directory', async () => {
+    const parent = BrowserWindow.getFocusedWindow() || mainWindow;
+    const result = await dialog.showOpenDialog(parent, {
+      title: '选择工作区目录',
+      properties: ['openDirectory', 'createDirectory'],
+      buttonLabel: '添加',
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+
+    const resolved = resolveExistingDirectory(result.filePaths[0]);
+    if (!resolved) return null;
+
+    // The picker is the proof of consent; remember it so the tools server can
+    // be restarted with this folder without asking again mid-session.
+    confirmedWorkspaces.add(resolved);
+    log('main', `workspace confirmed: ${resolved}`);
+    return { path: resolved, title: path.basename(resolved) || resolved };
+  });
+
   // boot() reports its own failures with the child process output.
   const started = await boot().catch((error) => {
     fail('Failed to start', String(error && error.message ? error.message : error));

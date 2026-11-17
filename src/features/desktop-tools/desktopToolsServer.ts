@@ -1,12 +1,16 @@
 // Registers the bundled local file/PowerShell MCP server on first launch.
 //
 // The desktop shell injects a `desktopTools` block into runtime-config.js
-// describing where the server script lives and which directories it may touch.
-// This module turns that into a normal `McpServerConfig`, so the capability is
-// just a configured MCP server: users can rename it, disable it, or point it at
-// different folders in Settings → MCP, exactly like a hand-added server.
+// describing where the server script lives. Which directories it may touch is
+// NOT injected: it comes from the workspace list the user manages in Settings,
+// so adding or removing a folder takes effect by rewriting this server's
+// arguments and reconnecting, without restarting the app.
+//
+// The capability remains an ordinary MCP server: it shows up in Settings → MCP,
+// and the user can rename, disable or delete it like any other.
 import { getDesktopToolsConfig } from '@/runtime/runtimeConfig';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 import type { McpServerConfig } from '@/types';
 
 /** Stable id so re-runs update the existing entry instead of adding duplicates. */
@@ -44,14 +48,16 @@ export function buildDesktopToolsServer(config: {
 }
 
 /**
- * The server path and roots are owned by the desktop shell, so an existing
- * entry is refreshed when the install moves (an app update to a new Program
- * Files path). User choices such as `enabled` and `disabledTools` survive.
+ * The server path is owned by the desktop shell, so an existing entry is
+ * refreshed when the install moves (an app update to a new Program Files path).
+ * The roots come from the workspace list, so adding a folder only rewrites
+ * `args`. User choices such as `enabled` and `disabledTools` survive, and a
+ * server the user disabled stays disabled.
  */
 export function syncDesktopToolsServer(): void {
   const config = getDesktopToolsConfig();
-  if (!config || config.roots.length === 0) {
-    // Not a desktop build, or the shell passed no usable folder.
+  if (!config) {
+    // Not a desktop build.
     return;
   }
 
@@ -61,9 +67,23 @@ export function syncDesktopToolsServer(): void {
     return;
   }
 
+  const roots = useWorkspaceStore.getState().mountedPaths();
   const servers = appSettings.mcpServers ?? [];
   const existing = servers.find((server) => server.id === DESKTOP_TOOLS_SERVER_ID);
-  const desired = buildDesktopToolsServer(config);
+
+  if (roots.length === 0) {
+    // No workspace means the tools have nothing to work on. Remove the entry
+    // rather than register a server that would deny every call.
+    if (existing) {
+      setAppSettings((prev) => ({
+        ...prev,
+        mcpServers: (prev.mcpServers ?? []).filter((server) => server.id !== DESKTOP_TOOLS_SERVER_ID),
+      }));
+    }
+    return;
+  }
+
+  const desired = buildDesktopToolsServer({ ...config, roots });
 
   if (!existing) {
     setAppSettings((prev) => ({
@@ -92,17 +112,39 @@ export function syncDesktopToolsServer(): void {
 }
 
 /**
- * Settings load asynchronously after mount, so this subscribes until the first
- * load completes and then syncs once.
+ * Settings and workspaces both load asynchronously after mount, so this waits
+ * for the first successful load of each and then syncs once. Later workspace
+ * edits call `syncDesktopToolsServer` directly from the store subscription.
  */
 export function initDesktopToolsMcpServer(): void {
   syncDesktopToolsServer();
 
-  let done = false;
-  const unsubscribe = useSettingsStore.subscribe((state) => {
-    if (done || !state.isSettingsLoaded) return;
-    done = true;
+  let settingsReady = useSettingsStore.getState().isSettingsLoaded;
+  let workspacesReady = useWorkspaceStore.getState().isLoaded;
+
+  const maybeSync = () => {
+    if (!settingsReady || !workspacesReady) return;
     syncDesktopToolsServer();
-    unsubscribe();
+  };
+
+  useSettingsStore.subscribe((state) => {
+    if (settingsReady || !state.isSettingsLoaded) return;
+    settingsReady = true;
+    maybeSync();
+  });
+
+  useWorkspaceStore.subscribe((state) => {
+    if (workspacesReady || !state.isLoaded) return;
+    workspacesReady = true;
+    maybeSync();
+  });
+
+  // Every accepted workspace mutation rewrites the server arguments. This is
+  // the whole "add a folder" flow: the store changes, the MCP config follows,
+  // and the MCP client reconnects the server on next use.
+  useWorkspaceStore.subscribe((state, previous) => {
+    if (!state.isLoaded) return;
+    if (state.workspaces === previous.workspaces) return;
+    syncDesktopToolsServer();
   });
 }

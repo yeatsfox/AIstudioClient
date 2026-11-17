@@ -1,6 +1,6 @@
 import React from 'react';
 import { useI18n } from '@/contexts/I18nContext';
-import { KeyRound, LayoutPanelLeft, SlidersHorizontal, X, Cloud, Sparkles } from 'lucide-react';
+import { KeyRound, LayoutPanelLeft, SlidersHorizontal, X, Cloud, Sparkles, FolderTree } from 'lucide-react';
 import { type SettingsTab, type SettingsTabDescriptor, useSettingsUiStore } from '@/stores/settingsUiStore';
 import { IconAbout, IconData, IconKeyboard, IconMcp } from '@/components/icons';
 import { Toggle } from '@/components/shared/Toggle';
@@ -17,6 +17,7 @@ const SETTINGS_TAB_ICONS: Record<SettingsTab, React.ElementType> = {
   interface: LayoutPanelLeft,
   api: KeyRound,
   mcp: IconMcp,
+  workspaces: FolderTree,
   data: IconData,
   shortcuts: IconKeyboard,
   about: IconAbout,
@@ -44,6 +45,7 @@ const SIDEBAR_TAB_ORDER: SettingsTab[] = [
   'providers',
   'models',
   'mcp',
+  'workspaces',
   'interface',
   'data',
   'shortcuts',
