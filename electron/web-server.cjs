@@ -31,6 +31,11 @@ const jsonStringOrNull = (value) => {
   return JSON.stringify(trimmed);
 };
 
+// The generated runtime-config.js, held in memory so the web server keeps
+// working when WEB_ROOT is not writable (installed under Program Files, a
+// read-only container layer, or a root-owned dist directory).
+let runtimeConfigSource = null;
+
 function writeRuntimeConfig() {
   const config = {
     serverManagedApi: toBool(process.env.RUNTIME_SERVER_MANAGED_API),
@@ -62,8 +67,33 @@ function writeRuntimeConfig() {
     })(),
   };
   const content = `window.__AMC_RUNTIME_CONFIG__ = ${JSON.stringify({ ...(globalThis.__AMC_RUNTIME_CONFIG__ || {}), ...config }, null, 2)};`;
-  fs.writeFileSync(path.join(ROOT, 'runtime-config.js'), content);
-  console.log('[web] runtime-config.js written');
+  runtimeConfigSource = content;
+  // Packaging note: a per-machine install (C:\Program Files\...) is read-only
+  // for a normal user, so this must never fail the whole web server. Also skip
+  // the write when the file is already byte-identical, which keeps the
+  // Docker image read-only-friendly and avoids a pointless rewrite per start.
+  const target = path.join(ROOT, 'runtime-config.js');
+  // A missing file is the normal first-run case, not an error: treat any read
+  // failure as "content differs" so the write below still gets attempted.
+  let onDisk = null;
+  try {
+    onDisk = fs.readFileSync(target, 'utf8');
+  } catch {
+    onDisk = null;
+  }
+  if (onDisk === content) {
+    console.log('[web] runtime-config.js already up to date');
+    return;
+  }
+  try {
+    fs.writeFileSync(target, content);
+    console.log('[web] runtime-config.js written');
+  } catch (error) {
+    // Still served from memory (see serveStatic), so the app works; only the
+    // on-disk copy is stale. This is the expected path for an install under
+    // Program Files, where the app directory is read-only.
+    console.error(`[web] runtime-config.js not written to disk (${error && error.code}); serving it from memory`);
+  }
 }
 
 // --- deployment access password for the WS upgrade ---
@@ -199,6 +229,19 @@ async function serveStatic(req, res, url) {
   if (!['GET', 'HEAD'].includes(req.method)) {
     res.writeHead(405, { allow: 'GET, HEAD' });
     res.end('Method Not Allowed');
+    return;
+  }
+  // Generated at startup; served from memory so an unwritable WEB_ROOT still
+  // gets a correct config. Must stay ahead of the disk lookup: a stale copy may
+  // exist there with the wrong ports.
+  if (pathname === '/runtime-config.js') {
+    const body = runtimeConfigSource ?? '';
+    res.writeHead(200, {
+      'content-type': 'application/javascript; charset=utf-8',
+      'cache-control': 'no-store',
+      'content-length': Buffer.byteLength(body),
+    });
+    res.end(req.method === 'HEAD' ? undefined : body);
     return;
   }
   const resolved = path.resolve(ROOT, `.${pathname}`);

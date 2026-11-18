@@ -31,6 +31,11 @@ const jsonStringOrNull = (value) => {
   return JSON.stringify(trimmed);
 };
 
+// The generated runtime-config.js, held in memory so the web server keeps
+// working when WEB_ROOT is not writable (a read-only container layer, a
+// bind-mounted dist directory, or a per-machine install under Program Files).
+let runtimeConfigSource = null;
+
 function writeRuntimeConfig() {
   const config = {
     serverManagedApi: toBool(process.env.RUNTIME_SERVER_MANAGED_API),
@@ -46,8 +51,30 @@ function writeRuntimeConfig() {
     pyodideBaseUrl: JSON.parse(jsonStringOrNull(process.env.RUNTIME_PYODIDE_BASE_URL)),
   };
   const content = `window.__AMC_RUNTIME_CONFIG__ = ${JSON.stringify({ ...(globalThis.__AMC_RUNTIME_CONFIG__ || {}), ...config }, null, 2)};`;
-  fs.writeFileSync(path.join(ROOT, 'runtime-config.js'), content);
-  console.log('[web] runtime-config.js written');
+  runtimeConfigSource = content;
+  // Never fatal: this used to throw on a read-only root and take the whole web
+  // server down before it listened, which surfaced as "web server failed to
+  // start" after install. An unwritable root now only means the on-disk copy
+  // stays stale; the config is still served (see serveStatic).
+  const target = path.join(ROOT, 'runtime-config.js');
+  // A missing file is the normal first-run case, not an error: treat any read
+  // failure as "content differs" so the write below still gets attempted.
+  let onDisk = null;
+  try {
+    onDisk = fs.readFileSync(target, 'utf8');
+  } catch {
+    onDisk = null;
+  }
+  if (onDisk === content) {
+    console.log('[web] runtime-config.js already up to date');
+    return;
+  }
+  try {
+    fs.writeFileSync(target, content);
+    console.log('[web] runtime-config.js written');
+  } catch (error) {
+    console.error(`[web] runtime-config.js not written to disk (${error && error.code}); serving it from memory`);
+  }
 }
 
 // --- deployment access password for the WS upgrade ---
@@ -189,6 +216,19 @@ async function serveStatic(req, res, url) {
   if (!withinRoot(resolved)) {
     res.writeHead(403);
     res.end('Forbidden');
+    return;
+  }
+  // Generated at startup; served from memory so an unwritable WEB_ROOT still
+  // gets a correct config. Must stay ahead of the disk lookup: a stale copy may
+  // exist there with the wrong ports.
+  if (pathname === '/runtime-config.js') {
+    const body = runtimeConfigSource ?? '';
+    res.writeHead(200, {
+      'content-type': 'application/javascript; charset=utf-8',
+      'cache-control': 'no-store',
+      'content-length': Buffer.byteLength(body),
+    });
+    res.end(req.method === 'HEAD' ? undefined : body);
     return;
   }
   let filePath = resolved;

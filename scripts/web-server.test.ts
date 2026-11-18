@@ -195,6 +195,75 @@ describe('Docker Web server process', () => {
     expect(published).toContain('"serverAccessPasswordRequired": false');
   });
 
+  // Windows 安装到 Program Files 后该目录对普通用户只读,写 runtime-config.js
+  // 会抛 EACCES。以前这个异常在 listen() 之前抛出,进程直接退出,用户看到的是
+  // "Web server failed to start"（v1.25.1 安装版的真实故障）。配置必须能以内
+  // 存版本提供,且磁盘写入失败不得中断启动。
+  it('serves runtime-config.js from memory when WEB_ROOT is not writable', async () => {
+    // Root ignores directory permission bits, so the read-only case only exists
+    // for an unprivileged user: drop to `nobody` when the suite runs as root,
+    // and use only world-readable paths from there on.
+    const asRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'amc-web-ro-'));
+    cleanups.push(async () => {
+      await fs.chmod(root, 0o755).catch(() => {});
+      await fs.rm(root, { recursive: true, force: true });
+    });
+    await fs.writeFile(path.join(root, 'index.html'), '<html>AMC read-only</html>');
+    // A directory without the write bit behaves like the Windows install path
+    // for a non-root user.
+    await fs.chmod(root, 0o555);
+
+    const source = await fs.readFile(path.resolve('docker/web-server.js'), 'utf8');
+    const child = spawn(
+      process.execPath,
+      [
+        '--input-type=commonjs',
+        '-e',
+        `${asRoot ? 'process.setgid(65534); process.setuid(65534);' : ''}\n${source}\nserver.on('listening', () => process.send({ port: server.address().port }));`,
+      ],
+      {
+        env: {
+          PATH: process.env.PATH,
+          PORT: '0',
+          WEB_ROOT: root,
+          API_UPSTREAM: 'http://127.0.0.1:9',
+          RUNTIME_SERVER_MANAGED_API: 'true',
+        },
+        stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      },
+    );
+    let stderr = '';
+    child.stderr!.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    let exited = false;
+    child.on('exit', () => {
+      exited = true;
+    });
+    cleanups.push(async () => {
+      if (child.exitCode === null && child.signalCode === null) {
+        const done = once(child, 'exit');
+        child.kill('SIGKILL');
+        await done;
+      }
+    });
+
+    const [message] = await Promise.race([
+      once(child, 'message'),
+      once(child, 'exit').then(() => {
+        throw new Error(`Web failed to start: ${stderr}`);
+      }),
+    ]);
+
+    expect(exited).toBe(false);
+    const published = (await request((message as { port: number }).port, '/runtime-config.js')).body.toString();
+    expect(published).toContain('window.__AMC_RUNTIME_CONFIG__');
+    expect(published).toContain('"serverManagedApi": true');
+    // Nothing may be written into the read-only root as a side effect.
+    await expect(fs.readdir(root)).resolves.toEqual(['index.html']);
+  });
+
   // 浏览器无法为 WebSocket 握手加自定义头,所以口令只能由这层桥接补上;
   // 少了这一步,只要部署设了 ACCESS_PASSWORD,所有 Live 连接都会 401（P0-2）。
   it('injects the deployment access password into bridged live upgrades', async () => {
