@@ -15,6 +15,9 @@ directories:
 # Electron itself only needs the main process; everything else is a resource.
 files:
   - electron/main.cjs
+  # The preload bridge is what lets the renderer ask the shell for a folder.
+  # Without it the picker silently does nothing in the packaged app.
+  - electron/preload.cjs
   - package.json
 
 # Runtime payload, laid out under resources/app so main.cjs can reach it with
