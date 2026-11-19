@@ -2,6 +2,9 @@ import { logService } from '@/services/logService';
 import { buildContentParts } from '@/utils/chat/builder';
 import { isServerCodeExecutionMode } from '@/utils/code/codeExecution';
 import { getModelCapabilities, bansModelTurnPrefill } from '@/utils/model/modelCapabilities';
+import { appendWorkspaceInstruction } from '@/features/workspaces/workspaceInstruction';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { getDesktopToolsConfig } from '@/runtime/runtimeConfig';
 import { resolveChatApiRoute } from '@/utils/chat/chatApiRoute';
 import { getLiveArtifactsUserDirective } from '@/features/prompts/liveUi';
 import { resolveAppLanguage } from '@/i18n/languageRegistry';
@@ -68,6 +71,18 @@ export const sendStandardMessage = async (params: SendStandardMessageParams) => 
   if (!settingsForApi.systemInstruction?.trim() && appSettings.systemInstruction) {
     settingsForApi.systemInstruction = appSettings.systemInstruction;
     settingsForPersistence.systemInstruction = appSettings.systemInstruction;
+  }
+
+  // Workspaces only reach the model through the prompt: the tools server knows
+  // the paths, the model does not, and "I have no access to that folder" is the
+  // honest answer when nobody said otherwise.
+  const workspaceInstruction = appendWorkspaceInstruction(
+    settingsForApi.systemInstruction,
+    useWorkspaceStore.getState().workspaces,
+    Boolean(getDesktopToolsConfig()),
+  );
+  if (workspaceInstruction !== undefined && workspaceInstruction !== settingsForApi.systemInstruction) {
+    settingsForApi.systemInstruction = workspaceInstruction;
   }
 
   if (isFastMode) {

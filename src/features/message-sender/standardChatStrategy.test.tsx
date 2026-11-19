@@ -87,10 +87,16 @@ vi.mock('@/constants/settingsDefaults', async (importOriginal) => {
   };
 });
 
-vi.mock('@/services/api/generationConfig', () => ({
-  buildGenerationConfig: mockBuildGenerationConfig,
-  appendFunctionDeclarationsToTools: mockAppendFunctionDeclarationsToTools,
-}));
+// Partial mock: keep the module's real constants (e.g. the marker the caller
+// reads to report dropped tools) and override only the two heavy builders.
+vi.mock('@/services/api/generationConfig', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/api/generationConfig')>();
+  return {
+    ...actual,
+    buildGenerationConfig: mockBuildGenerationConfig,
+    appendFunctionDeclarationsToTools: mockAppendFunctionDeclarationsToTools,
+  };
+});
 
 vi.mock('@/services/api/chatApi', () => ({
   generateContentTurnApi: vi.fn(),

@@ -4549,4 +4549,13 @@ export const chatInputTranslations = {
     es: 'Buscar en la línea de tiempo',
     ko: '타임라인 탐색',
   },
+  chatToolsDroppedForBuiltInTools: {
+    en: 'Local and MCP tools were not sent with this message because web search or another built-in tool is on, and this model cannot combine the two. Turn off the built-in tool to use file access.',
+    zh: '本条消息没有发送本地工具和 MCP 工具：当前开启了联网搜索等内置工具，而该模型无法同时使用两者。如需让模型读取文件，请先关闭内置工具。',
+    ja: '組み込みツール（ウェブ検索など）が有効なため、このモデルではローカルツールと MCP ツールを送信できませんでした。ファイルを読ませるには組み込みツールをオフにしてください。',
+    de: 'Lokale und MCP-Werkzeuge wurden nicht mitgesendet: Websuche oder ein anderes integriertes Werkzeug ist aktiv, und dieses Modell kann beides nicht kombinieren. Deaktiviere das integrierte Werkzeug, um Dateizugriff zu nutzen.',
+    fr: 'Les outils locaux et MCP n’ont pas été envoyés : la recherche web ou un autre outil intégré est activé, et ce modèle ne peut pas combiner les deux. Désactivez l’outil intégré pour accéder aux fichiers.',
+    es: 'No se enviaron las herramientas locales ni MCP: la búsqueda web u otra herramienta integrada está activa y este modelo no puede combinar ambas. Desactiva la herramienta integrada para acceder a archivos.',
+    ko: '내장 도구(웹 검색 등)가 켜져 있어 이 모델에서는 로컬 도구와 MCP 도구를 함께 보낼 수 없습니다. 파일 접근을 사용하려면 내장 도구를 끄세요.',
+  },
 };

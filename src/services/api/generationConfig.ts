@@ -425,11 +425,27 @@ const hasBuiltInTools = (tools: GenerationConfig['tools'] | undefined): boolean 
     (tool) => 'googleSearch' in tool || 'googleMaps' in tool || 'codeExecution' in tool || 'urlContext' in tool,
   );
 
+/**
+ * Set when declarations were requested but deliberately left out of the request.
+ *
+ * Only Gemini 3 can combine built-in tools (googleSearch, codeExecution, …) with
+ * custom function declarations; every other model rejects the combination.
+ * Dropping them silently meant the model answered "I cannot read that folder"
+ * with no way for the user to learn that their local file tools had been
+ * removed from the request — the tool simply was not there. Callers surface this
+ * flag instead of letting the user guess.
+ */
+export const DROPPED_FUNCTION_DECLARATIONS = '__droppedFunctionDeclarations' as const;
+
+export type GenerationConfigWithToolOutcome = GenerationConfig & {
+  [DROPPED_FUNCTION_DECLARATIONS]?: boolean;
+};
+
 export const appendFunctionDeclarationsToTools = (
   modelId: string,
   generationConfig: GenerationConfig,
   functionDeclarations: FunctionDeclaration[],
-): GenerationConfig => {
+): GenerationConfigWithToolOutcome => {
   const supportsBuiltInCustomToolCombination = isGemini3Model(modelId) || isGeminiRoboticsModel(modelId);
   const hasBuiltIns = hasBuiltInTools(generationConfig.tools);
   const shouldIncludeServerSideToolInvocations = hasBuiltIns && supportsBuiltInCustomToolCombination;
@@ -454,7 +470,7 @@ export const appendFunctionDeclarationsToTools = (
         functionDeclarationCount: functionDeclarations.length,
       },
     );
-    return generationConfig;
+    return { ...generationConfig, [DROPPED_FUNCTION_DECLARATIONS]: true };
   }
 
   return {

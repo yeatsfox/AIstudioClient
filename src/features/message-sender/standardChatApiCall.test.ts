@@ -56,6 +56,8 @@ vi.mock('@/utils/chat/builder', () => ({
 vi.mock('@/services/api/generationConfig', () => ({
   buildGenerationConfig: mocks.buildGenerationConfig,
   appendFunctionDeclarationsToTools: mocks.appendFunctionDeclarationsToTools,
+  // Mirrors the real module: the caller reads this key to report dropped tools.
+  DROPPED_FUNCTION_DECLARATIONS: '__droppedFunctionDeclarations',
 }));
 vi.mock('@/services/api/chatApi', () => ({
   generateContentTurnApi: mocks.generateContentTurnApi,

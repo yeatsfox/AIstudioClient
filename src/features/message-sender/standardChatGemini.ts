@@ -3,7 +3,13 @@ import { toError } from '@/utils/errorMessage';
 import { createMessage } from '@/utils/chat/session';
 import { isServerCodeExecutionMode } from '@/utils/code/codeExecution';
 import { isGemini3Model } from '@/utils/model/modelCapabilities';
-import { appendFunctionDeclarationsToTools, buildGenerationConfig } from '@/services/api/generationConfig';
+import {
+  DROPPED_FUNCTION_DECLARATIONS,
+  appendFunctionDeclarationsToTools,
+  buildGenerationConfig,
+} from '@/services/api/generationConfig';
+import { toastWarning } from '@/stores/toastStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import {
   generateContentTurnApi,
   sendStatelessMessageNonStreamApi,
@@ -168,6 +174,14 @@ export const executeGeminiChat = async ({
     ...(isLocalPythonEnabledForTurn ? localPythonFunctionDeclarations : []),
     ...(mcpFunctionDeclarations as Parameters<typeof appendFunctionDeclarationsToTools>[2]),
   ]);
+  // Built-in tools and custom functions cannot be combined before Gemini 3, so
+  // the local/MCP tools were stripped from this request. Say so once: otherwise
+  // the model answers "I cannot see that folder" and the user has no way to
+  // learn that its tools were never sent.
+  if (requestConfig[DROPPED_FUNCTION_DECLARATIONS]) {
+    const language = useSettingsStore.getState().language ?? 'en';
+    toastWarning(getTranslator(language)('chatToolsDroppedForBuiltInTools'));
+  }
   const hasFunctionDeclarationsInRequest = !!requestConfig.tools?.some((tool) => 'functionDeclarations' in tool);
 
   const canJournalStream = isGeminiProxyRelativePath(appSettings) && finalRole === 'user' && !isContinueMode;
