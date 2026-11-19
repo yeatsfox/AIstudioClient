@@ -38,6 +38,32 @@ describe('buildDesktopToolsServer', () => {
     expect(server.args).toEqual(['C:\\app\\desktop-tools-mcp\\server.mjs', 'D:\\work']);
   });
 
+  it('passes the audit log path as an option flag, never as a root', () => {
+    const server = buildDesktopToolsServer({
+      serverPath: 'C:\\app\\server.mjs',
+      roots: ['D:\\work'],
+      command: 'node',
+      auditLogPath: 'C:\\Users\\me\\AppData\\Roaming\\amc-webui\\logs\\desktop-tools-audit.jsonl',
+    });
+
+    expect(server.args).toEqual([
+      'C:\\app\\server.mjs',
+      'D:\\work',
+      '--audit-log=C:\\Users\\me\\AppData\\Roaming\\amc-webui\\logs\\desktop-tools-audit.jsonl',
+    ]);
+  });
+
+  it('omits the audit flag when the shell could not resolve a path', () => {
+    const server = buildDesktopToolsServer({
+      serverPath: 's.mjs',
+      roots: ['D:\\work'],
+      command: 'node',
+      auditLogPath: '   ',
+    });
+
+    expect(server.args).toEqual(['s.mjs', 'D:\\work']);
+  });
+
   it('sets ELECTRON_RUN_AS_NODE so the Electron binary acts as Node', () => {
     const server = buildDesktopToolsServer({
       serverPath: 'C:\\app\\server.mjs',

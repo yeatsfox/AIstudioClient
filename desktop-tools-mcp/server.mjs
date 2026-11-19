@@ -17,11 +17,33 @@ import path from 'node:path';
 
 import { listDir, readFile, replaceInFile, searchFiles, writeFile } from './src/fileTools.mjs';
 import { normalizeRoots } from './src/paths.mjs';
+import { createAuditLog } from './src/audit.mjs';
+import { classifyToolCall } from './src/risk.mjs';
 import { detectShell, runPowerShell } from './src/shellRunner.mjs';
 
+/**
+ * Options travel as `--flag=value` so they can never be mistaken for a root.
+ * `--audit-log=<path>` enables the audit trail; without it nothing is written.
+ */
+function parseArgv(argv) {
+  const options = {};
+  const roots = [];
+
+  for (const arg of argv) {
+    if (typeof arg !== 'string' || !arg.trim()) continue;
+    if (arg.startsWith('--')) {
+      const [flag, ...rest] = arg.slice(2).split('=');
+      options[flag] = rest.join('=');
+      continue;
+    }
+    roots.push(arg);
+  }
+
+  return { options, roots };
+}
+
 /** Roots are passed as argv; fall back to the CWD so the server is never rootless. */
-async function resolveRoots(argv) {
-  const raw = argv.filter((arg) => typeof arg === 'string' && arg.trim() && !arg.startsWith('--'));
+async function resolveRoots(raw) {
   const candidates = raw.length > 0 ? raw : [process.cwd()];
 
   const roots = [];
@@ -77,7 +99,8 @@ const TOOLS = [
     name: 'write_file',
     description:
       'Write a text file, creating or overwriting it. To change part of an existing file prefer ' +
-      'replace_in_file — it is safer than rewriting the whole file.',
+      'replace_in_file — it is safer than rewriting the whole file. ' +
+      'Risk: mutate, raised to destructive for credential/system paths.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -125,7 +148,9 @@ const TOOLS = [
       'Run a PowerShell command in a workspace directory and return stdout, stderr and the exit code. ' +
       'Use it for builds, tests, git, file listing and any system task the file tools cannot express. ' +
       'Runs with -NoProfile -NonInteractive and a 120s timeout by default. ' +
-      'Prefer read-only commands; anything destructive needs the user to approve the call.',
+      'Every call is classified read/exec/destructive and logged with that level; destructive calls ' +
+      '(recursive deletes, format, force-push, security-policy changes) need the user to approve them. ' +
+      'Prefer the most specific read-only command that answers the question.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -139,7 +164,8 @@ const TOOLS = [
 ];
 
 async function main() {
-  const roots = await resolveRoots(process.argv.slice(2));
+  const { options, roots: rawRoots } = parseArgv(process.argv.slice(2));
+  const roots = await resolveRoots(rawRoots);
   if (roots.length === 0) {
     console.error(
       'desktop-tools-mcp: no valid workspace directory. Pass at least one existing directory as an argument.',
@@ -147,16 +173,34 @@ async function main() {
     process.exit(1);
   }
 
-  const server = new Server(
-    { name: 'desktop-tools', version: '1.0.0' },
-    { capabilities: { tools: {} } },
-  );
+  const audit = createAuditLog({ logPath: options['audit-log'] || null });
+
+  const server = new Server({ name: 'desktop-tools', version: '1.0.0' }, { capabilities: { tools: {} } });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: rawArgs = {} } = request.params;
     const args = rawArgs ?? {};
+    // Classify before executing: the risk level explains the decision in the
+    // audit trail even when the call is later rejected by path containment.
+    const risk = classifyToolCall(name, args);
+    const startedAt = Date.now();
+
+    const record = (outcome, extra = {}) =>
+      audit.record({
+        tool: name,
+        risk: risk.level,
+        reason: risk.reason,
+        outcome,
+        durationMs: Date.now() - startedAt,
+        // Paths and scripts are the only arguments worth keeping; content of a
+        // write is potentially a whole file and is redacted anyway.
+        path: typeof args.path === 'string' ? args.path : undefined,
+        cwd: typeof args.cwd === 'string' ? args.cwd : undefined,
+        script: typeof args.script === 'string' ? args.script : undefined,
+        ...extra,
+      });
 
     try {
       let text;
@@ -215,8 +259,13 @@ async function main() {
           };
       }
 
-      return { content: [{ type: 'text', text }] };
+      await record('ok');
+      // The risk level travels with the result so the host can show what kind
+      // of operation it just allowed, and so the model sees the same label.
+      const prefix = risk.level === 'read' ? '' : `[${risk.level}: ${risk.reason}]\n`;
+      return { content: [{ type: 'text', text: prefix + text }] };
     } catch (error) {
+      await record('error', { error: String(error?.message ?? error) });
       // Errors go back as tool results, not crashes: the model can read the
       // message and correct itself instead of losing the whole session.
       return {

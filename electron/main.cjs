@@ -164,6 +164,13 @@ function startWebServer(port, upstreamPort) {
     if (roots.length > 0) {
       desktopEnv.RUNTIME_DESKTOP_TOOLS_ROOTS = roots.join(path.delimiter);
     }
+    // The audit trail lives beside the other per-user logs (desktop.log), so a
+    // user who is asked "what did it do" has one place to look.
+    try {
+      desktopEnv.RUNTIME_DESKTOP_TOOLS_AUDIT_LOG = path.join(app.getPath('userData'), 'logs', 'desktop-tools-audit.jsonl');
+    } catch {
+      // No user data dir means no log; the tools still work.
+    }
   }
   const child = spawnNode([entry], {
     PORT: String(port),

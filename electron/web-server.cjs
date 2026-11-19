@@ -63,6 +63,12 @@ function writeRuntimeConfig() {
         serverPath,
         roots,
         command: trim(process.env.RUNTIME_DESKTOP_TOOLS_COMMAND) || process.execPath,
+        // Written by the shell so the audit trail sits next to desktop.log.
+        // Absent when the shell could not resolve a user data directory.
+        ...(() => {
+          const auditLogPath = trim(process.env.RUNTIME_DESKTOP_TOOLS_AUDIT_LOG);
+          return auditLogPath ? { auditLogPath } : {};
+        })(),
       };
     })(),
   };

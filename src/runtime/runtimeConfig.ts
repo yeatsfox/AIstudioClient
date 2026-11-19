@@ -75,6 +75,12 @@ export interface DesktopToolsConfig {
   roots: string[];
   /** Node-compatible binary used to launch the server. */
   command: string;
+  /**
+   * Absolute path of the append-only tool audit trail. Absent when the shell
+   * could not resolve a user data directory, in which case the server runs
+   * without logging instead of failing to start.
+   */
+  auditLogPath?: string;
 }
 
 /**
@@ -99,7 +105,9 @@ export function getDesktopToolsConfig(): DesktopToolsConfig | null {
     ? record.roots.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
     : [];
 
-  return { serverPath, command, roots };
+  const auditLogPath = readNullableString(record.auditLogPath) ?? undefined;
+
+  return { serverPath, command, roots, auditLogPath };
 }
 
 /**

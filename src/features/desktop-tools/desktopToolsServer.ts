@@ -23,10 +23,20 @@ export const DESKTOP_TOOLS_SERVER_ID = 'amc_desktop_tools';
  */
 const AUTO_APPROVED_TOOLS = ['list_dir', 'read_file', 'search_files'];
 
+/**
+ * `--audit-log=<path>` makes the child append every call to that file. The
+ * path is resolved by the desktop shell, which owns the user data directory;
+ * absent here, the server simply writes no log.
+ */
+const auditLogArg = (auditLogPath?: string): string[] =>
+  typeof auditLogPath === 'string' && auditLogPath.trim() ? [`--audit-log=${auditLogPath.trim()}`] : [];
+
 export function buildDesktopToolsServer(config: {
   serverPath: string;
   roots: string[];
   command: string;
+  /** Optional absolute path for the append-only tool audit trail. */
+  auditLogPath?: string;
 }): McpServerConfig {
   return {
     id: DESKTOP_TOOLS_SERVER_ID,
@@ -35,7 +45,7 @@ export function buildDesktopToolsServer(config: {
     transport: 'stdio',
     command: config.command,
     // Roots are separate arguments, so a path containing spaces is not split.
-    args: [config.serverPath, ...config.roots],
+    args: [config.serverPath, ...config.roots, ...auditLogArg(config.auditLogPath)],
     // The desktop shell launches the server with the Electron binary, which only
     // behaves as a plain Node runtime when this flag is set. The MCP client
     // passes only a whitelist of environment variables, so the flag has to
