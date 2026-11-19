@@ -29,6 +29,15 @@ export interface McpServerConfig {
   /** Legacy deny-list; still honoured and wins over `autoApproveTools`. */
   disabledAutoApproveTools?: string[];
   isTrusted?: boolean;
+  /**
+   * Set once the user has flipped this server's switch by hand. Until then an
+   * `enabled: false` is not a decision, it is just an entry that was never
+   * turned on — the bundled local tools server registers itself enabled, and a
+   * user who adds a workspace plainly means "let the model read this folder".
+   * Without the distinction, either the folder silently stays unreachable or
+   * every sync re-enables a server the user deliberately switched off.
+   */
+  enabledByUser?: boolean;
   /** Per-server tool-call timeout in seconds (1..3600). */
   timeout?: number;
   /** Long-running tools keep the connection alive on progress notifications. */

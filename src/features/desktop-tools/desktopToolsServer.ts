@@ -103,7 +103,16 @@ export function syncDesktopToolsServer(): void {
     return;
   }
 
+  // The server registers itself enabled, but an entry can end up disabled
+  // without the user ever deciding that. Adding a workspace is the moment their
+  // intent is unambiguous — they want the model to read that folder — so an
+  // entry nobody switched off gets switched on here. A server the user did turn
+  // off stays off; that is why `enabledByUser` exists.
+  const userWantsDisabled = existing.enabledByUser === true && existing.enabled === false;
+  const shouldEnable = !userWantsDisabled && existing.enabled !== true;
+
   const unchanged =
+    !shouldEnable &&
     existing.command === desired.command &&
     JSON.stringify(existing.args ?? []) === JSON.stringify(desired.args ?? []) &&
     JSON.stringify(existing.env ?? {}) === JSON.stringify(desired.env ?? {});
@@ -115,7 +124,13 @@ export function syncDesktopToolsServer(): void {
     ...prev,
     mcpServers: (prev.mcpServers ?? []).map((server) =>
       server.id === DESKTOP_TOOLS_SERVER_ID
-        ? { ...server, command: desired.command, args: desired.args, env: desired.env }
+        ? {
+            ...server,
+            command: desired.command,
+            args: desired.args,
+            env: desired.env,
+            ...(shouldEnable ? { enabled: true } : {}),
+          }
         : server,
     ),
   }));

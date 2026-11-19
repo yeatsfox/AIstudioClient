@@ -200,6 +200,8 @@ const sanitizeMcpServers = (value: unknown, fallback: McpServerConfig[]): McpSer
     if (disabledAutoApproveTools) server.disabledAutoApproveTools = disabledAutoApproveTools;
     if (typeof (item as Record<string, unknown>).isTrusted === 'boolean')
       server.isTrusted = (item as Record<string, unknown>).isTrusted as boolean;
+    if (typeof (item as Record<string, unknown>).enabledByUser === 'boolean')
+      server.enabledByUser = (item as Record<string, unknown>).enabledByUser as boolean;
 
     const timeout = sanitizeMcpTimeout((item as Record<string, unknown>).timeout);
     if (timeout !== undefined) server.timeout = timeout;

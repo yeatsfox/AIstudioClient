@@ -86,6 +86,7 @@ describe('SettingsModal', () => {
       'Data',
       'Shortcuts',
       'About',
+      'Diagnostics',
     ]);
     expect(tabLabels).not.toContain('Chat');
   });
@@ -109,6 +110,7 @@ describe('SettingsModal', () => {
       'Data',
       'Shortcuts',
       'About',
+      'Diagnostics',
     ]);
   });
 

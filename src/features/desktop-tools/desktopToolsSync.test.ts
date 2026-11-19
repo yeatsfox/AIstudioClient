@@ -97,7 +97,7 @@ describe('syncDesktopToolsServer', () => {
   it('preserves the user disabling the server', () => {
     state.mounted = ['/home/me/project'];
     syncDesktopToolsServer();
-    state.servers = [{ ...state.servers[0], enabled: false }];
+    state.servers = [{ ...state.servers[0], enabled: false, enabledByUser: true }];
 
     state.mounted = ['/home/me/project', '/home/me/other'];
     syncDesktopToolsServer();
@@ -105,6 +105,43 @@ describe('syncDesktopToolsServer', () => {
     // A folder change must not silently re-enable something the user turned off.
     expect(state.servers[0].enabled).toBe(false);
     expect(state.servers[0].args).toContain('/home/me/other');
+  });
+
+  it('turns the server on when a folder is added and nobody switched it off', () => {
+    // Reported from a real install: the entry existed but was disabled, so
+    // adding a workspace registered the folder and the model still could not
+    // read it. An untouched switch is not a decision.
+    state.mounted = ['/home/me/project'];
+    syncDesktopToolsServer();
+    state.servers = [{ ...state.servers[0], enabled: false }];
+
+    state.mounted = ['/home/me/project', '/home/me/feishu'];
+    syncDesktopToolsServer();
+
+    expect(state.servers[0].enabled).toBe(true);
+    expect(state.servers[0].args).toContain('/home/me/feishu');
+  });
+
+  it('leaves a deliberately disabled server alone', () => {
+    state.mounted = ['/home/me/project'];
+    syncDesktopToolsServer();
+    state.servers = [{ ...state.servers[0], enabled: false, enabledByUser: true }];
+
+    state.mounted = ['/home/me/project', '/home/me/feishu'];
+    syncDesktopToolsServer();
+
+    expect(state.servers[0].enabled).toBe(false);
+  });
+
+  it('does not rewrite the settings when the server is already enabled', () => {
+    state.mounted = ['/home/me/project'];
+    syncDesktopToolsServer();
+    const writesAfterFirst = state.writes;
+
+    syncDesktopToolsServer();
+
+    expect(state.servers[0].enabled).toBe(true);
+    expect(state.writes).toBe(writesAfterFirst);
   });
 
   it('is a no-op outside the desktop build', () => {

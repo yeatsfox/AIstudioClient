@@ -13,6 +13,7 @@ import {
 } from '@/utils/mcp/virtualMcpLocalization';
 import { useVirtualMcpStore } from '@/stores/mcp/virtualMcpStore';
 import { createMcpServer, type CapabilityTestState, type ServerFilter } from './mcpSectionShared';
+import { enabledTogglePatch } from './enabledToggle';
 
 interface UseMcpSectionLogicProps {
   settings: AppSettings;
@@ -293,7 +294,12 @@ export const useMcpSectionLogic = ({ settings, onUpdate }: UseMcpSectionLogicPro
     (serverIndex: number, cardKey: string) => {
       const target = servers[serverIndex];
       if (!target) return;
-      const next = { ...target, enabled: true, ...(target.isTrusted === undefined ? { isTrusted: true } : {}) };
+      // Record the decision: the desktop-tools sync must not undo it later.
+      const next = {
+        ...target,
+        ...enabledTogglePatch(true),
+        ...(target.isTrusted === undefined ? { isTrusted: true } : {}),
+      };
       updateServers(servers.map((server, index) => (index === serverIndex ? next : server)));
       void testServerCapabilities(next as McpServerConfig, cardKey);
     },
@@ -310,7 +316,7 @@ export const useMcpSectionLogic = ({ settings, onUpdate }: UseMcpSectionLogicPro
         enableServerWithProbe(index, cardKey);
         return;
       }
-      updateServer(index, { enabled });
+      updateServer(index, enabledTogglePatch(enabled));
     },
     [enableServerWithProbe, updateServer],
   );
