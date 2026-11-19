@@ -1,6 +1,77 @@
 import { describe, expect, it } from 'vitest';
-import { calculateApiUsageRecordPriceUsd, estimateMessageCostUsd, formatCostUsd } from './usagePricing';
+import {
+  calculateApiUsageRecordPriceUsd,
+  calculateUncachedEquivalentPriceUsd,
+  estimateMessageCostUsd,
+  formatCostUsd,
+  summarizeCacheEconomics,
+} from './usagePricing';
 import type { ApiUsageRecord } from '@/services/db/dbService';
+
+describe('cache economics', () => {
+  const pricedRecord = (overrides: Partial<ApiUsageRecord> = {}): ApiUsageRecord => ({
+    timestamp: Date.now(),
+    modelId: 'gemini-4-hydrogen',
+    promptTokens: 100_000,
+    cachedPromptTokens: 50_000,
+    completionTokens: 20_000,
+    totalTokens: 120_000,
+    exactPricing: {
+      version: 1,
+      requestKind: 'chat',
+      promptTokensDetails: [{ modality: 'TEXT', tokenCount: 50_000 }],
+      cacheTokensDetails: [{ modality: 'TEXT', tokenCount: 50_000 }],
+      responseTokensDetails: [{ modality: 'TEXT', tokenCount: 20_000 }],
+    },
+    ...overrides,
+  });
+
+  it('bills cached reads at the prompt rate for the uncached comparison', () => {
+    const record = pricedRecord();
+    const actual = calculateApiUsageRecordPriceUsd(record);
+    const uncached = calculateUncachedEquivalentPriceUsd(record);
+
+    // 50k prompt @1.5 + 50k cached @0.075 + 20k output @7.5
+    expect(actual).toBeCloseTo(0.075 + 0.00375 + 0.15, 8);
+    // 同一批 cache token 按 1.5 计价：50k @1.5 = 0.075
+    expect(uncached).toBeCloseTo(0.075 + 0.075 + 0.15, 8);
+    expect(uncached! - actual!).toBeCloseTo(0.07125, 8);
+  });
+
+  it('returns null for the uncached comparison when the record has no pricing evidence', () => {
+    const record = pricedRecord({ exactPricing: undefined });
+    expect(calculateUncachedEquivalentPriceUsd(record)).toBeNull();
+  });
+
+  it('sums cached tokens and savings across records', () => {
+    const economics = summarizeCacheEconomics([pricedRecord(), pricedRecord()]);
+
+    expect(economics.cachedTokens).toBe(100_000);
+    // 分母：未缓存 50k + 缓存读 50k，两条各 100k
+    expect(economics.cacheEligibleInputTokens).toBe(200_000);
+    expect(economics.cacheHitRate).toBeCloseTo(0.5, 8);
+    expect(economics.savedUsd).toBeCloseTo(0.1425, 8);
+    expect(economics.uncachedPriceUsd).toBeCloseTo(0.6, 8);
+  });
+
+  it('leaves money null when no record can be priced', () => {
+    const economics = summarizeCacheEconomics([pricedRecord({ exactPricing: undefined })]);
+
+    expect(economics.cachedTokens).toBe(50_000);
+    expect(economics.cacheHitRate).toBeCloseTo(0.5, 8);
+    expect(economics.savedUsd).toBeNull();
+    expect(economics.uncachedPriceUsd).toBeNull();
+  });
+
+  it('reports a zero hit rate when nothing was cacheable', () => {
+    const economics = summarizeCacheEconomics([
+      pricedRecord({ cachedPromptTokens: 0, promptTokens: 0, exactPricing: undefined, completionTokens: 1000 }),
+    ]);
+
+    expect(economics.cacheEligibleInputTokens).toBe(0);
+    expect(economics.cacheHitRate).toBe(0);
+  });
+});
 
 describe('calculateApiUsageRecordPriceUsd', () => {
   it('prices Hydrogen input, cached input and output at official rates', () => {

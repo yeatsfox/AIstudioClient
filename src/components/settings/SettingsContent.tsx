@@ -8,6 +8,7 @@ import { ModelsSection } from './sections/ModelsSection';
 import { McpSection } from './sections/McpSection';
 import { WorkspacesSection } from './sections/WorkspacesSection';
 import { ShortcutsSection } from './sections/ShortcutsSection';
+import { DiagnosticsSection } from './sections/DiagnosticsSection';
 import { AboutSection } from './sections/AboutSection';
 import { ProviderSettingsSection } from './sections/providers/ProviderSettingsSection';
 import { GeminiProviderDetail } from './sections/providers/GeminiProviderDetail';
@@ -33,6 +34,8 @@ interface SettingsContentProps extends SettingsTransferProps {
   onImportHistory: (file: File) => void;
   onExportHistory: () => void;
   onCloseModal?: () => void;
+  /** Switches the settings tab, used by the diagnostics "Fix" buttons. */
+  onNavigateToTab?: (tab: SettingsTab) => void;
   /** Badge text for the selected model in the Models tab; see ModelCatalogList.activeBadgeLabel. */
   activeModelBadgeLabel?: string;
 }
@@ -82,6 +85,7 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
   onImportScenarios,
   onExportScenarios,
   onCloseModal,
+  onNavigateToTab,
   activeModelBadgeLabel,
 }) => {
   const animClass = 'animate-in fade-in duration-200 ease-out';
@@ -212,6 +216,12 @@ export const SettingsContent: React.FC<SettingsContentProps> = ({
             availableModels={shortcutAvailableModels}
             onUpdateSettings={handleBatchUpdate}
           />
+        </div>
+      )}
+
+      {activeTab === 'diagnostics' && (
+        <div className={animClass}>
+          <DiagnosticsSection settings={currentSettings} onNavigateToTab={onNavigateToTab} />
         </div>
       )}
 

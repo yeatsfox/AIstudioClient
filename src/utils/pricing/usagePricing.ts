@@ -227,6 +227,7 @@ const calculateFromExactPricing = (
   modelId: string,
   exactPricing: ApiUsageExactPricing,
   timestamp = Date.now(),
+  options: { priceCacheAsPrompt?: boolean } = {},
 ): number | null => {
   const normalizedModelId = normalizeModelId(modelId);
 
@@ -281,8 +282,12 @@ const calculateFromExactPricing = (
         modalityPricing.prompt)
       : (modalityPricing.tool ?? modalityPricing.prompt));
 
+  // 缓存经济性：把缓存读按普通输入价计费，得到"完全不用缓存要花多少"。
+  // 只在对比用途（priceCacheAsPrompt）下启用，真实账单仍然走 cacheRates。
   const promptCost = sumTokensByRate(exactPricing.promptTokensDetails, promptRates);
-  const cacheCost = sumTokensByRate(exactPricing.cacheTokensDetails, cacheRates);
+  const cacheCost = options.priceCacheAsPrompt
+    ? sumTokensByRate(exactPricing.cacheTokensDetails, promptRates)
+    : sumTokensByRate(exactPricing.cacheTokensDetails, cacheRates);
   const responseCost = sumTokensByRate(exactPricing.responseTokensDetails, responseRates);
   const toolCost = sumTokensByRate(exactPricing.toolUsePromptTokensDetails, toolRates);
 
@@ -300,6 +305,80 @@ export const calculateApiUsageRecordPriceUsd = (record: ApiUsageRecord): number 
   }
 
   return calculateFromExactPricing(record.modelId, exactPricing, record.timestamp);
+};
+
+/**
+ * 缓存经济性：这条记录如果缓存读也按全价输入计费，会是多少钱。
+ * 与 calculateApiUsageRecordPriceUsd 相减即为缓存省下的金额。
+ * 返回 null 表示该记录没有可用定价（与真实价格口径一致）。
+ */
+export const calculateUncachedEquivalentPriceUsd = (record: ApiUsageRecord): number | null => {
+  const exactPricing = record.exactPricing;
+  if (!exactPricing) {
+    return null;
+  }
+
+  return calculateFromExactPricing(record.modelId, exactPricing, record.timestamp, { priceCacheAsPrompt: true });
+};
+
+export interface CacheEconomics {
+  /** 缓存命中的 token 数。 */
+  cachedTokens: number;
+  /** 参与缓存命中率计算的全价输入 token 数（未缓存输入 + 缓存读）。 */
+  cacheEligibleInputTokens: number;
+  /** 缓存读 / 可缓存输入，0 表示没有可比基数。 */
+  cacheHitRate: number;
+  /** 缓存省下的美元金额；没有定价时为 null。 */
+  savedUsd: number | null;
+  /** 若不使用缓存，这段用量的总价；没有定价时为 null。 */
+  uncachedPriceUsd: number | null;
+}
+
+export const EMPTY_CACHE_ECONOMICS: CacheEconomics = {
+  cachedTokens: 0,
+  cacheEligibleInputTokens: 0,
+  cacheHitRate: 0,
+  savedUsd: null,
+  uncachedPriceUsd: null,
+};
+
+/**
+ * 汇总一批记录的缓存经济性。
+ *
+ * 命中率的分母刻意取「未缓存输入 + 缓存读」而不是 prompt 总量：工具调用的
+ * prompt token 不参与缓存，混进分母会把命中率压得偏低，用户会误以为缓存没生效。
+ * 金额只在至少一条记录有定价时给出，避免把"未知定价"当成 0 算成省了钱。
+ */
+export const summarizeCacheEconomics = (records: ApiUsageRecord[]): CacheEconomics => {
+  let cachedTokens = 0;
+  let eligibleInputTokens = 0;
+  let savedUsd = 0;
+  let uncachedPriceUsd = 0;
+  let pricedRecords = 0;
+
+  for (const record of records) {
+    const cached = record.cachedPromptTokens ?? 0;
+    cachedTokens += cached;
+    eligibleInputTokens += Math.max(record.promptTokens - cached, 0) + cached;
+
+    const actual = calculateApiUsageRecordPriceUsd(record);
+    const uncached = calculateUncachedEquivalentPriceUsd(record);
+    if (actual === null || uncached === null) {
+      continue;
+    }
+
+    pricedRecords += 1;
+    savedUsd += Math.max(uncached - actual, 0);
+    uncachedPriceUsd += uncached;
+  }
+
+  return {
+    cachedTokens,
+    cacheEligibleInputTokens: eligibleInputTokens,
+    cacheHitRate: eligibleInputTokens > 0 ? cachedTokens / eligibleInputTokens : 0,
+    savedUsd: pricedRecords > 0 ? savedUsd : null,
+    uncachedPriceUsd: pricedRecords > 0 ? uncachedPriceUsd : null,
+  };
 };
 
 export const formatPriceUsd = (amount: number | null): string => {

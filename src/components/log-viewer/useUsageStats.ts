@@ -1,7 +1,11 @@
 import { logService } from '@/services/logService';
 import { useEffect, useMemo, useState } from 'react';
 import { dbService, type ApiUsageRecord } from '@/services/db/dbService';
-import { calculateApiUsageRecordPriceUsd } from '@/utils/pricing/usagePricing';
+import {
+  calculateApiUsageRecordPriceUsd,
+  summarizeCacheEconomics,
+  type CacheEconomics,
+} from '@/utils/pricing/usagePricing';
 
 export type UsageTimeRange = 'today' | '7d' | '30d' | 'all';
 
@@ -16,8 +20,9 @@ interface UsageSummary {
   estimatedCostUnavailableRequests: number;
 }
 
-interface UsageModelBreakdown extends UsageSummary {
+export interface UsageModelBreakdown extends UsageSummary {
   modelId: string;
+  cacheEconomics: CacheEconomics;
 }
 
 const EMPTY_SUMMARY: UsageSummary = {
@@ -79,6 +84,7 @@ const buildBreakdown = (records: ApiUsageRecord[]): UsageModelBreakdown[] => {
     const current = grouped.get(record.modelId) ?? {
       modelId: record.modelId,
       ...EMPTY_SUMMARY,
+      cacheEconomics: summarizeCacheEconomics([]),
     };
 
     const estimatedCost = calculateApiUsageRecordPriceUsd(record);
@@ -91,6 +97,22 @@ const buildBreakdown = (records: ApiUsageRecord[]): UsageModelBreakdown[] => {
     current.estimatedCostUsd += estimatedCost ?? 0;
     current.estimatedCostPricedRequests += estimatedCost === null ? 0 : 1;
     current.estimatedCostUnavailableRequests += estimatedCost === null ? 1 : 0;
+    // 逐个累加单条记录的缓存经济性，避免把整组再走一遍定价。
+    const recordEconomics = summarizeCacheEconomics([record]);
+    current.cacheEconomics = {
+      cachedTokens: current.cacheEconomics.cachedTokens + recordEconomics.cachedTokens,
+      cacheEligibleInputTokens:
+        current.cacheEconomics.cacheEligibleInputTokens + recordEconomics.cacheEligibleInputTokens,
+      cacheHitRate: 0,
+      savedUsd:
+        recordEconomics.savedUsd === null
+          ? current.cacheEconomics.savedUsd
+          : (current.cacheEconomics.savedUsd ?? 0) + recordEconomics.savedUsd,
+      uncachedPriceUsd:
+        recordEconomics.uncachedPriceUsd === null
+          ? current.cacheEconomics.uncachedPriceUsd
+          : (current.cacheEconomics.uncachedPriceUsd ?? 0) + recordEconomics.uncachedPriceUsd,
+    };
     grouped.set(record.modelId, current);
   });
 
@@ -138,7 +160,20 @@ export const useUsageStats = () => {
   }, [timeRange]);
 
   const summary = useMemo(() => buildSummary(records), [records]);
-  const byModel = useMemo(() => buildBreakdown(records), [records]);
+  const byModel = useMemo(() => {
+    // 命中率要等整组累加完才能算（分母是组内总和，不是单条）。
+    return buildBreakdown(records).map((breakdown) => ({
+      ...breakdown,
+      cacheEconomics: {
+        ...breakdown.cacheEconomics,
+        cacheHitRate:
+          breakdown.cacheEconomics.cacheEligibleInputTokens > 0
+            ? breakdown.cacheEconomics.cachedTokens / breakdown.cacheEconomics.cacheEligibleInputTokens
+            : 0,
+      },
+    }));
+  }, [records]);
+  const cacheEconomics = useMemo(() => summarizeCacheEconomics(records), [records]);
 
   return {
     timeRange,
@@ -146,5 +181,6 @@ export const useUsageStats = () => {
     isLoading,
     summary,
     byModel,
+    cacheEconomics,
   };
 };

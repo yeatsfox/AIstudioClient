@@ -199,6 +199,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onImportScenarios={onImportScenarios}
                 onExportScenarios={onExportScenarios}
                 onCloseModal={onClose}
+                onNavigateToTab={(tab) => setActiveTab(tab)}
                 activeModelBadgeLabel={t('settingsDefaultModelBadge')}
               />
             )}

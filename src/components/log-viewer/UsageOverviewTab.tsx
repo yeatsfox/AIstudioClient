@@ -39,7 +39,7 @@ const PriceValue: React.FC<{
 
 export const UsageOverviewTab: React.FC = () => {
   const { t } = useI18n();
-  const { timeRange, setTimeRange, isLoading, summary, byModel } = useUsageStats();
+  const { timeRange, setTimeRange, isLoading, summary, byModel, cacheEconomics } = useUsageStats();
 
   const unavailableLabel = interpolate(t('usagePricingUnavailable'), {
     count: summary.estimatedCostUnavailableRequests.toLocaleString(),
@@ -114,6 +114,37 @@ export const UsageOverviewTab: React.FC = () => {
                 ))}
               </div>
             </div>
+
+            {cacheEconomics.cacheEligibleInputTokens > 0 && (
+              <div className={SETTINGS_SECTION_CARD_CLASS}>
+                <div className={`${SETTINGS_SECTION_LABEL_CLASS} mb-3`}>{t('usageCacheEconomics')}</div>
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-[var(--theme-text-secondary)]">{t('usageCacheHitRate')}</span>
+                    <span className="text-sm font-medium tabular-nums text-[var(--theme-text-primary)]">
+                      {(cacheEconomics.cacheHitRate * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-[var(--theme-text-secondary)]">{t('usageCacheSaved')}</span>
+                    <span className="text-sm font-medium tabular-nums text-[var(--theme-text-primary)]">
+                      {cacheEconomics.savedUsd === null ? '—' : formatPriceUsd(cacheEconomics.savedUsd)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-[var(--theme-text-secondary)]">
+                      {t('usageCacheWouldHaveCost')}
+                    </span>
+                    <span className="text-sm font-medium tabular-nums text-[var(--theme-text-secondary)]">
+                      {cacheEconomics.uncachedPriceUsd === null
+                        ? '—'
+                        : formatPriceUsd(cacheEconomics.uncachedPriceUsd)}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-[var(--theme-text-tertiary)]">{t('usageCacheHitRateNote')}</p>
+              </div>
+            )}
 
             <div className={SETTINGS_SECTION_CARD_CLASS}>
               <div className={`${SETTINGS_SECTION_LABEL_CLASS} mb-3`}>{t('usageByModel')}</div>
