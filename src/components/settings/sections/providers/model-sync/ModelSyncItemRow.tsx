@@ -3,6 +3,7 @@ import { Check, Eye, Lightbulb, Wrench } from 'lucide-react';
 import type { ModelOption } from '@/types';
 import { useI18n } from '@/contexts/I18nContext';
 import { formatContextWindow, getOrInferModelCapabilities } from '@/utils/model/knownModelsCatalog';
+import { buildCapabilityManifest, summarizeCapabilityManifest } from '@/utils/model/capabilityManifest';
 import { ProviderAvatar } from '@/components/settings/sections/providers/ProviderAvatar';
 
 interface ModelSyncItemRowProps {
@@ -31,6 +32,15 @@ export const ModelSyncItemRow: React.FC<ModelSyncItemRowProps> = ({
 
   const caps = getOrInferModelCapabilities(model);
   const contextLabel = formatContextWindow(model.contextWindow);
+  // The badges above come from inference, which answers with a confident boolean
+  // even when it is guessing. Say so rather than let a guess look like a fact.
+  const manifest = buildCapabilityManifest({ model });
+  const unverifiedLabel =
+    manifest.unverified.length > 0 ? t('modelCapabilityUnknown').concat(` (${manifest.unverified.length})`) : null;
+  const unverifiedTitle =
+    manifest.unverified.length > 0
+      ? `${t('modelCapabilityUnknownHint')}\n${summarizeCapabilityManifest(manifest)}`
+      : undefined;
 
   return (
     <div
@@ -167,6 +177,15 @@ export const ModelSyncItemRow: React.FC<ModelSyncItemRowProps> = ({
               >
                 <Wrench size={10} />
                 <span>Tools</span>
+              </span>
+            )}
+            {unverifiedLabel && (
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium border border-dashed border-[var(--theme-border-primary)] text-[var(--theme-text-tertiary)] cursor-help"
+                title={unverifiedTitle}
+                data-testid={`model-unverified-${model.id}`}
+              >
+                {unverifiedLabel}
               </span>
             )}
           </div>

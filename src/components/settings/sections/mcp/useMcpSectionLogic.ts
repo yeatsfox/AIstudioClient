@@ -268,12 +268,14 @@ export const useMcpSectionLogic = ({ settings, onUpdate }: UseMcpSectionLogicPro
 
       try {
         const capabilities = await fetchMcpServerCapabilities({ ...server, enabled: true });
-        const derived = deriveStatus(capabilities, null, true);
-        setStatus(server.id, { state: derived.state, lastError: undefined, version: derived.version });
+        // Pass the id so errors raised for a sibling server in the same batch
+        // do not get attributed to this one.
+        const derived = deriveStatus(capabilities, null, true, server.id);
+        setStatus(server.id, { state: derived.state, lastError: derived.lastError, version: derived.version });
         setCapabilityStates((prev) => ({ ...prev, [cardKey]: { status: 'success', capabilities } }));
       } catch (capabilityError) {
         const message = getErrorMessage(capabilityError);
-        const derived = deriveStatus(null, message, server.enabled);
+        const derived = deriveStatus(null, message, server.enabled, server.id);
         setStatus(server.id, { state: derived.state, lastError: derived.lastError });
         setCapabilityStates((prev) => ({
           ...prev,

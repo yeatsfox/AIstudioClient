@@ -213,6 +213,19 @@ export const McpServerCard: React.FC<McpServerCardProps> = ({
           {status.state === 'error' && status.lastError ? (
             <span className="ml-auto min-w-0 truncate text-[var(--theme-text-danger)]">{status.lastError}</span>
           ) : null}
+          {/*
+            Connected with a leftover error means part of the server answered and
+            part did not. Silence there was the same lie as a green pill on a
+            dead server, just quieter — surface it in a warn tone instead.
+          */}
+          {status.state === 'connected' && status.lastError ? (
+            <span
+              className="ml-auto min-w-0 truncate text-[var(--theme-text-warning)]"
+              title={status.lastError}
+            >
+              {status.lastError}
+            </span>
+          ) : null}
         </div>
       )}
 
