@@ -5,8 +5,7 @@
 // Asked to read a folder it had just been given, the model truthfully answered
 // "I have no access to that path" because it had never been told otherwise.
 // The tool being available is not the same as the model knowing it is.
-import type { Workspace } from '@/features/workspaces/workspaceModel';
-import { isWorkspaceEnabled } from '@/features/workspaces/workspaceModel';
+import { isWorkspaceEnabled, type Workspace } from './workspaceModel';
 
 /**
  * Builds the system-prompt section describing mounted workspaces.

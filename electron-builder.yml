@@ -18,6 +18,10 @@ files:
   # The preload bridge is what lets the renderer ask the shell for a folder.
   # Without it the picker silently does nothing in the packaged app.
   - electron/preload.cjs
+  # Owns the native agent harness processes (Antigravity). main.cjs requires it
+  # by path, so leaving it out makes the Agent session tab fail to start with
+  # no visible reason in the packaged build.
+  - electron/agentHarness.cjs
   - package.json
 
 # Runtime payload, laid out under resources/app so main.cjs can reach it with

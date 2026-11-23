@@ -2,7 +2,7 @@ import { ACTIVE_CHAT_SESSION_ID_KEY } from '@/constants/storageKeys';
 
 export type SessionHistoryMode = 'auto' | 'push' | 'replace' | 'none';
 
-type ActiveViewGetter = () => 'chat' | 'library';
+type ActiveViewGetter = () => string;
 let activeViewGetter: ActiveViewGetter | null = null;
 
 export const registerActiveViewGetter = (getter: ActiveViewGetter) => {
@@ -103,6 +103,28 @@ export const syncActiveSessionRoute = (
     if (window.location.pathname !== '/') {
       const method = historyMode === 'replace' ? 'replaceState' : 'pushState';
       window.history[method]({}, '', '/');
+    }
+  } catch {
+    // Ignore history sync failures.
+  }
+};
+
+/**
+ * Move the address bar to a view that has no session id of its own.
+ *
+ * Used by the agent view: the conversation lives in a local process, so there
+ * is nothing to encode beyond "this view is open". Without this, switching to
+ * it would leave a `/chat/<id>` path behind and a reload would reopen a chat
+ * the user already left.
+ */
+export const syncViewRoute = (targetPath: string, historyMode: SessionHistoryMode = 'auto') => {
+  if (historyMode === 'none' || typeof window === 'undefined') {
+    return;
+  }
+  try {
+    if (window.location.pathname !== targetPath) {
+      const method = historyMode === 'push' ? 'pushState' : historyMode === 'replace' ? 'replaceState' : 'pushState';
+      window.history[method]({ view: targetPath.replace(/^\//, '') || 'chat' }, '', targetPath);
     }
   } catch {
     // Ignore history sync failures.

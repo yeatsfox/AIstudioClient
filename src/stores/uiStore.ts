@@ -10,6 +10,7 @@ import {
   registerActiveViewGetter,
   syncActiveSessionRoute,
   syncLibraryRoute,
+  syncViewRoute,
   type SessionHistoryMode,
 } from '@/stores/sync/sessionRouteSync';
 
@@ -53,6 +54,13 @@ const buildInitialHistorySidebarState = () => {
 
 export type HistoryDisplayMode = 'group' | 'time';
 
+/**
+ * Top-level views. `agent` is a native agent harness session (Antigravity),
+ * which is a conversation but not one of ours: the model loop runs in a local
+ * CLI process, so it gets its own view instead of pretending to be a chat.
+ */
+export type ActiveView = 'chat' | 'library' | 'agent';
+
 export interface UIState {
   isSettingsModalOpen: boolean;
   isPreloadedMessagesModalOpen: boolean;
@@ -62,7 +70,7 @@ export interface UIState {
   isLogViewerOpen: boolean;
   chatInputHeight: number;
   historyDisplayMode: HistoryDisplayMode;
-  activeView: 'chat' | 'library';
+  activeView: ActiveView;
   isCommandPaletteOpen: boolean;
 }
 
@@ -80,7 +88,7 @@ export interface UIActions {
   toggleHistorySidebar: () => void;
   setChatInputHeight: (height: number) => void;
   setHistoryDisplayMode: (mode: HistoryDisplayMode) => void;
-  setActiveView: (view: 'chat' | 'library', options?: SetActiveViewOptions) => void;
+  setActiveView: (view: ActiveView, options?: SetActiveViewOptions) => void;
   setIsCommandPaletteOpen: (value: UpdaterOrValue<boolean>) => void;
   toggleCommandPalette: () => void;
 }
@@ -117,9 +125,12 @@ const mergePersistedUiPreferences = (
   };
 };
 
-const resolveInitialActiveView = (): 'chat' | 'library' => {
+const resolveInitialActiveView = (): ActiveView => {
   if (typeof window !== 'undefined' && window.location.pathname === '/library') {
     return 'library';
+  }
+  if (typeof window !== 'undefined' && window.location.pathname === '/agent') {
+    return 'agent';
   }
   return 'chat';
 };
@@ -182,6 +193,10 @@ export const useUIStore = create<UIState & UIActions>()(
         }
         if (view === 'library') {
           syncLibraryRoute(historyMode);
+        } else if (view === 'agent') {
+          // The agent view is a local process, not a server-side session, so
+          // there is no session id to encode in the path.
+          syncViewRoute('/agent', historyMode);
         } else {
           const storedSessionId =
             typeof window !== 'undefined' ? sessionStorage.getItem(ACTIVE_CHAT_SESSION_ID_KEY) : null;

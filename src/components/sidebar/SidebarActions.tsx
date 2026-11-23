@@ -1,6 +1,6 @@
 import React, { type RefObject } from 'react';
 import { useI18n } from '@/contexts/I18nContext';
-import { Search, X, Library, Sparkles } from 'lucide-react';
+import { Search, X, Library, Sparkles, Terminal } from 'lucide-react';
 import { IconNewChat, IconNewGroup } from '@/components/icons';
 import { DESKTOP_BREAKPOINT_PX } from '@/constants/layout';
 import { buildNewTabHref } from '@/utils/chat/lastActiveSession';
@@ -134,6 +134,16 @@ export const SidebarActions: React.FC<SidebarActionsProps> = ({
     }
   };
 
+  const handleAgentClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      setActiveView('agent');
+      if (window.innerWidth < DESKTOP_BREAKPOINT_PX) {
+        onCloseSidebar?.();
+      }
+    }
+  };
+
   return (
     <div className="px-2 pt-2 space-y-1" data-testid="sidebar-actions-stack">
       <div>
@@ -158,6 +168,19 @@ export const SidebarActions: React.FC<SidebarActionsProps> = ({
           <Library size={18} className="text-[var(--theme-text-primary)]" strokeWidth={2.2} />
           <span className="min-w-0 flex-1 truncate font-medium text-[var(--theme-text-primary)]">
             {t('libraryTitle')}
+          </span>
+        </a>
+      </div>
+      <div>
+        <a
+          href="/agent"
+          onClick={handleAgentClick}
+          className={`${SIDEBAR_ACTION_ROW_CLASS} ${activeView === 'agent' ? 'bg-[var(--theme-bg-tertiary)]' : ''}`}
+          aria-label={t('agentTabTitle')}
+        >
+          <Terminal size={18} className="text-[var(--theme-text-primary)]" strokeWidth={2.2} />
+          <span className="min-w-0 flex-1 truncate font-medium text-[var(--theme-text-primary)]">
+            {t('agentTabTitle')}
           </span>
         </a>
       </div>

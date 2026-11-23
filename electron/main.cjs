@@ -13,6 +13,7 @@ const net = require('node:net');
 const http = require('node:http');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
+const agentHarness = require('./agentHarness.cjs');
 
 const isDev = !app.isPackaged;
 const APP_ROOT = isDev ? path.join(__dirname, '..') : path.join(process.resourcesPath, 'app');
@@ -310,6 +311,13 @@ async function boot() {
 
 function shutdown() {
   app.isQuitting = true;
+  // Agent processes are children of this one; without this an in-flight agent
+  // would keep running after the window closed.
+  try {
+    agentHarness.stopAll();
+  } catch {
+    // Best effort during shutdown.
+  }
   for (const child of [webProcess, apiProcess]) {
     if (child && !child.killed) {
       try {
@@ -323,6 +331,10 @@ function shutdown() {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
+
+  // Native agent harnesses run as child processes owned by this process, so a
+  // renderer can drive them without ever being able to spawn anything itself.
+  agentHarness.registerAgentIpc(ipcMain, () => mainWindow, log);
 
   ipcMain.handle('amc:pick-directory', async () => {
     const parent = BrowserWindow.getFocusedWindow() || mainWindow;

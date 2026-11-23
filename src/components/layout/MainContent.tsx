@@ -11,6 +11,10 @@ const LazyHistorySidebar = lazyNamedComponent(() => import('@/components/sidebar
 const LazySidePanel = lazyNamedComponent(() => import('./SidePanel'), 'SidePanel');
 const LazyMediaNavPanel = lazyNamedComponent(() => import('@/components/media-nav/MediaNavPanel'), 'MediaNavPanel');
 const LazyLibraryView = lazyNamedComponent(() => import('@/components/library/LibraryView'), 'LibraryView');
+const LazyAgentSessionView = lazyNamedComponent(
+  () => import('@/features/agent-session/AgentSessionView'),
+  'AgentSessionView',
+);
 
 interface MainContentProps {
   app: AppViewModel;
@@ -85,6 +89,12 @@ export const MainContent: React.FC<MainContentProps> = ({ app }) => {
             }}
             themeId={currentThemeId}
           />
+        </Suspense>
+      ) : activeView === 'agent' ? (
+        <Suspense
+          fallback={<div className="flex-1 h-full flex items-center justify-center bg-[var(--theme-bg-primary)]" />}
+        >
+          <LazyAgentSessionView />
         </Suspense>
       ) : (
         <ChatRuntimeProvider app={app}>

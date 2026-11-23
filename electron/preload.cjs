@@ -18,4 +18,41 @@ contextBridge.exposeInMainWorld('__AMC_DESKTOP__', {
 
   /** Whether this renderer is running inside the desktop shell at all. */
   isDesktop: true,
+
+  /**
+   * Native agent harnesses (currently Antigravity's `agy`).
+   *
+   * The renderer is sandboxed and must never spawn processes itself, so a run
+   * is started in the main process. Events arrive as NDJSON lines from the
+   * CLI's `--output-format stream-json`; they are forwarded verbatim and the
+   * renderer parses them, so an unparseable line can never break the bridge.
+   */
+  agents: {
+    /** Which harnesses are installed on this machine and ready to run. */
+    detect: () => ipcRenderer.invoke('amc:agents-detect'),
+
+    /**
+     * Start a conversation process.
+     * @param {{harness: string, cwd: string, model?: string, mode?: string}} options
+     * @returns {Promise<{sessionId: string} | {error: string}>}
+     */
+    start: (options) => ipcRenderer.invoke('amc:agents-start', options),
+
+    /** Send one prompt to a running conversation. */
+    send: (sessionId, prompt) => ipcRenderer.invoke('amc:agents-send', { sessionId, prompt }),
+
+    /** Stop a conversation and drop its process. */
+    stop: (sessionId) => ipcRenderer.invoke('amc:agents-stop', { sessionId }),
+
+    /**
+     * Subscribe to `{sessionId, stream: 'stdout'|'stderr', line}` events.
+     * @returns {() => void} unsubscribe
+     */
+    onEvent: (listener) => {
+      const channel = 'amc:agents-event';
+      const wrapped = (_event, payload) => listener(payload);
+      ipcRenderer.on(channel, wrapped);
+      return () => ipcRenderer.removeListener(channel, wrapped);
+    },
+  },
 });
