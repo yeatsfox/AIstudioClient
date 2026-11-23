@@ -119,7 +119,12 @@ describe('AgentSessionView', () => {
           prompt: 'do work',
           status: 'succeeded',
           blocks: [],
-          permissionNotices: ['Tool write_to_file was denied: requires approval'],
+          permissionNotices: [
+            {
+              notice: 'Tool write_to_file was denied: requires approval',
+              request: null,
+            },
+          ],
         },
       ],
     });
@@ -128,6 +133,71 @@ describe('AgentSessionView', () => {
 
     expect(container.textContent).toContain('有工具因缺少授权被拒绝');
     expect(container.textContent).toContain('requires approval');
+    // No buildable action(target) in the notice: offering an approval here
+    // would mean writing a guessed rule, so no Allow button may appear.
+    const allowButtons = Array.from(container.querySelectorAll('button')).filter(
+      (button) => button.textContent?.trim() === '允许',
+    );
+    expect(allowButtons).toHaveLength(0);
+  });
+
+  it('offers to allow the tool when the notice names a rule', () => {
+    const notice = 'run_command was denied: add command(git) to permissions.allow';
+    useAgentSessionStore.setState({
+      cwd: '/w',
+      turns: [
+        {
+          id: 'turn-1',
+          prompt: 'do work',
+          status: 'succeeded',
+          blocks: [],
+          permissionNotices: [
+            { notice, request: { action: 'command', target: 'git', rule: 'command(git)', notice } },
+          ],
+        },
+      ],
+    });
+
+    const container = renderView();
+
+    // The exact rule is shown, so the user approves something specific that
+    // affects every future session rather than a vague "allow this tool".
+    expect(container.textContent).toContain('command(git)');
+    const allowButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '允许',
+    );
+    expect(allowButton).toBeDefined();
+  });
+
+  it('shows the saved state instead of the button once approved', () => {
+    const notice = 'run_command was denied: add command(git) to permissions.allow';
+    useAgentSessionStore.setState({
+      cwd: '/w',
+      turns: [
+        {
+          id: 'turn-1',
+          prompt: 'do work',
+          status: 'succeeded',
+          blocks: [],
+          permissionNotices: [
+            {
+              notice,
+              request: { action: 'command', target: 'git', rule: 'command(git)', notice },
+              resolution: { status: 'allowed', rule: 'command(git)' },
+            },
+          ],
+        },
+      ],
+    });
+
+    const container = renderView();
+
+    expect(container.textContent).toContain('已允许');
+    expect(container.textContent).toContain('发送新消息后生效');
+    const allowButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '允许',
+    );
+    expect(allowButton).toBeUndefined();
   });
 
   it('warns that the desktop app is required when no bridge exists', () => {

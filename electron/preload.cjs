@@ -45,6 +45,18 @@ contextBridge.exposeInMainWorld('__AMC_DESKTOP__', {
     stop: (sessionId) => ipcRenderer.invoke('amc:agents-stop', { sessionId }),
 
     /**
+     * Pre-approve one tool by writing it into the CLI's own settings.
+     *
+     * The rule comes from a soft-deny notice the CLI printed, so the user is
+     * approving something specific they were shown rather than a blanket grant.
+     * @returns {Promise<{added: boolean, path?: string, alreadyAllowed?: boolean, error?: string}>}
+     */
+    allow: (rule) => ipcRenderer.invoke('amc:agents-allow', { rule }),
+
+    /** Read back the rules currently granted to the CLI. */
+    allowedRules: () => ipcRenderer.invoke('amc:agents-allowed-rules'),
+
+    /**
      * Subscribe to `{sessionId, stream: 'stdout'|'stderr', line}` events.
      * @returns {() => void} unsubscribe
      */

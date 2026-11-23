@@ -12,6 +12,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const agentPermissions = require('./agentPermissions.cjs');
 
 /**
  * How long a single turn may take before the process is considered stuck.
@@ -302,6 +303,21 @@ function registerAgentIpc(ipcMain, getWindow, log) {
   ipcMain.handle('amc:agents-send', (_event, { sessionId, prompt } = {}) => sendPrompt(sessionId, prompt));
 
   ipcMain.handle('amc:agents-stop', (_event, { sessionId } = {}) => stopSession(sessionId));
+
+  // Approving a soft-denied tool writes one rule into the CLI's own settings.
+  // The renderer sends the rule it derived from the notice; the writer here
+  // validates it, keeps every unrelated key, and refuses a file it cannot parse.
+  ipcMain.handle('amc:agents-allow', (_event, { rule } = {}) => {
+    const result = agentPermissions.allowRule(rule);
+    if (result.added) {
+      log('agent', `approved ${rule} in ${result.path}`);
+    } else if (result.error) {
+      log('agent', `approval refused for ${String(rule).slice(0, 120)}: ${result.error}`);
+    }
+    return result;
+  });
+
+  ipcMain.handle('amc:agents-allowed-rules', () => agentPermissions.listAllowedRules());
 }
 
 module.exports = { HARNESSES, detectHarnesses, startSession, sendPrompt, stopSession, stopAll, registerAgentIpc };

@@ -14,6 +14,14 @@ export type AgentHarnessBridge = {
   >;
   send: (sessionId: string, prompt: string) => Promise<{ ok?: boolean; error?: string }>;
   stop: (sessionId: string) => Promise<{ ok?: boolean }>;
+  allow: (rule: string) => Promise<{
+    added: boolean;
+    path?: string;
+    rule?: string;
+    alreadyAllowed?: boolean;
+    error?: string;
+  }>;
+  allowedRules: () => Promise<{ path: string; allow: string[]; error?: string }>;
   onEvent: (listener: (payload: AgentBridgeEvent) => void) => () => void;
 };
 
@@ -36,16 +44,6 @@ export type AgentBridgeEvent =
       stderr?: string;
       stopped?: boolean;
     };
-
-declare global {
-  interface Window {
-    __AMC_DESKTOP__?: {
-      pickDirectory?: () => Promise<{ path: string; title: string } | null>;
-      isDesktop?: boolean;
-      agents?: AgentHarnessBridge;
-    };
-  }
-}
 
 /** The bridge when running in the desktop shell, otherwise null. */
 export const getAgentBridge = (): AgentHarnessBridge | null => {

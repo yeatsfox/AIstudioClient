@@ -1,7 +1,12 @@
 import React from 'react';
 import { getTranslator } from '@/i18n/coreTranslations';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useAgentSessionStore, type AgentBlock, type AgentTurn } from './agentSessionStore';
+import {
+  useAgentSessionStore,
+  type AgentBlock,
+  type AgentPermissionNotice,
+  type AgentTurn,
+} from './agentSessionStore';
 import { useAgentSessionRunner } from './useAgentSessionRunner';
 
 /**
@@ -78,9 +83,67 @@ const ToolCard: React.FC<{
   );
 };
 
-const TurnView: React.FC<{ turn: AgentTurn; t: (key: string, params?: Record<string, string | number>) => string }> = ({
+/**
+ * One soft-denied tool, with an approve action when a rule could be built.
+ *
+ * Approving writes the rule to the CLI's global settings, which affects every
+ * future session, so the exact rule is shown before the click and the state of
+ * the approval is shown after it. A notice with no buildable rule keeps its text
+ * and gets no button rather than writing a guessed target.
+ */
+const PermissionNoticeRow: React.FC<{
+  entry: AgentPermissionNotice;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  onApprove: (notice: string, rule: string) => void;
+}> = ({ entry, t, onApprove }) => {
+  const [pending, setPending] = React.useState(false);
+  const resolution = entry.resolution;
+
+  const handleClick = async () => {
+    if (!entry.request || pending) return;
+    setPending(true);
+    await onApprove(entry.notice, entry.request.rule);
+    setPending(false);
+  };
+
+  return (
+    <li className="space-y-1">
+      <div className="break-words">{entry.notice}</div>
+      {entry.request && !resolution ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="rounded bg-[var(--theme-bg-tertiary)] px-1.5 py-0.5 text-[11px]">{entry.request.rule}</code>
+          <button
+            type="button"
+            onClick={handleClick}
+            disabled={pending}
+            className="rounded border border-amber-600/50 px-2 py-0.5 text-[11px] font-medium hover:bg-amber-500/20 disabled:opacity-50"
+          >
+            {pending ? t('agentPermissionApproving') : t('agentPermissionAllow')}
+          </button>
+        </div>
+      ) : null}
+      {resolution?.status === 'allowed' ? (
+        <div className="text-[11px] text-[var(--theme-text-tertiary)]">
+          {t('agentPermissionAllowed', { rule: resolution.rule })}
+        </div>
+      ) : null}
+      {resolution?.status === 'failed' ? (
+        <div className="text-[11px] text-red-600 dark:text-red-300">
+          {t('agentPermissionAllowFailed', { message: resolution.message })}
+        </div>
+      ) : null}
+    </li>
+  );
+};
+
+const TurnView: React.FC<{
+  turn: AgentTurn;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  onApprove: (notice: string, rule: string) => void;
+}> = ({
   turn,
   t,
+  onApprove,
 }) => (
   <div className="mb-6">
     <div className="mb-2 flex justify-end">
@@ -113,8 +176,8 @@ const TurnView: React.FC<{ turn: AgentTurn; t: (key: string, params?: Record<str
         <div className="my-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
           <div className="font-medium">{t('agentPermissionDeniedTitle')}</div>
           <ul className="mt-1 list-disc space-y-0.5 pl-4">
-            {turn.permissionNotices.map((notice, index) => (
-              <li key={index}>{notice}</li>
+            {turn.permissionNotices.map((entry) => (
+              <PermissionNoticeRow key={entry.notice} entry={entry} t={t} onApprove={onApprove} />
             ))}
           </ul>
         </div>
@@ -161,7 +224,7 @@ export const AgentSessionView: React.FC = () => {
 
   const [draft, setDraft] = React.useState('');
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
-  const { send, stop, detect } = useAgentSessionRunner();
+  const { send, stop, detect, approve } = useAgentSessionRunner();
 
   // Ask the main process which harnesses exist as soon as this view mounts, so
   // the "not installed" notice is accurate instead of a guess.
@@ -246,7 +309,7 @@ export const AgentSessionView: React.FC = () => {
             {t('agentEmptyHint')}
           </div>
         ) : (
-          turns.map((turn) => <TurnView key={turn.id} turn={turn} t={t} />)
+          turns.map((turn) => <TurnView key={turn.id} turn={turn} t={t} onApprove={approve} />)
         )}
       </div>
 

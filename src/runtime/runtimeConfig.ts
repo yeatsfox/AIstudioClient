@@ -24,9 +24,35 @@ declare global {
     __AMC_DESKTOP__?: {
       pickDirectory: () => Promise<{ path: string; title: string } | null>;
       isDesktop: true;
+      /**
+       * Native agent CLIs. Declared structurally here to avoid importing the
+       * agent feature into this low-level module; `AgentHarnessBridge` in
+       * `src/features/agent-session/agentBridge.ts` is the authoritative shape
+       * and is assignable to this.
+       */
+      agents?: AgentHarnessBridgeShape;
     };
   }
 }
+
+/** Structural stand-in for the agent bridge; see that feature for detail. */
+type AgentHarnessBridgeShape = {
+  detect: () => Promise<{ id: string; label: string; installed: boolean; path: string | null }[]>;
+  start: (options: { harness: string; cwd: string; model?: string; mode?: string }) => Promise<
+    { sessionId: string } | { error: string }
+  >;
+  send: (sessionId: string, prompt: string) => Promise<{ ok?: boolean; error?: string }>;
+  stop: (sessionId: string) => Promise<{ ok?: boolean }>;
+  allow: (rule: string) => Promise<{
+    added: boolean;
+    path?: string;
+    rule?: string;
+    alreadyAllowed?: boolean;
+    error?: string;
+  }>;
+  allowedRules: () => Promise<{ path: string; allow: string[]; error?: string }>;
+  onEvent: (listener: (payload: never) => void) => () => void;
+};
 
 function readBooleanValue(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') {

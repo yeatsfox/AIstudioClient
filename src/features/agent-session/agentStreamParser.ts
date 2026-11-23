@@ -234,3 +234,48 @@ export const isPermissionNotice = (line: string): boolean => {
     lower.includes('permission')
   );
 };
+
+/**
+ * A permission the CLI asked for and could not obtain.
+ *
+ * `rule` is the exact string that goes into `permissions.allow`. It is only
+ * produced when a rule can be built from the notice, because writing a guessed
+ * rule would silently widen access to something the user never approved.
+ */
+export type PermissionRequest = {
+  action: string;
+  target: string;
+  rule: string;
+  notice: string;
+};
+
+/** The permission actions the engine evaluates. See the CLI permissions doc. */
+const PERMISSION_ACTIONS = [
+  'read_file',
+  'write_file',
+  'read_url',
+  'execute_url',
+  'download_url',
+  'command',
+  'unsandboxed',
+  'mcp',
+] as const;
+
+/**
+ * Pull `action(target)` out of a soft-deny notice.
+ *
+ * The CLI names the tool and its argument in the notice, but the surrounding
+ * prose is not a stable contract, so the rule is read from an explicit
+ * `action(target)` occurrence when present. A notice that only names the tool
+ * yields no rule: the caller shows the text and leaves the decision to the
+ * user rather than inventing a target.
+ */
+export const readPermissionRequest = (line: string): PermissionRequest | null => {
+  if (!isPermissionNotice(line)) return null;
+  const match = new RegExp(`\\b(${PERMISSION_ACTIONS.join('|')})\\(([^)]+)\\)`).exec(line);
+  if (!match) return null;
+  const action = match[1];
+  const target = match[2].trim();
+  if (!target) return null;
+  return { action, target, rule: `${action}(${target})`, notice: line.trim() };
+};

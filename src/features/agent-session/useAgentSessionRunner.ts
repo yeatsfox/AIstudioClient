@@ -152,5 +152,38 @@ export const useAgentSessionRunner = () => {
     }
   }, [store]);
 
-  return { send, stop, restartConversation, detect };
+  /**
+   * Approve one notice by writing its rule into the CLI's settings.
+   *
+   * Approval is a real change to a file shared with the user's other
+   * Antigravity work, so the outcome is always reported on the notice itself
+   * rather than assumed. Nothing is sent to the agent: the next turn will pick
+   * the rule up, which is why the UI says a new prompt is needed.
+   */
+  const approve = useCallback(
+    async (notice: string, rule: string) => {
+      const bridge = getAgentBridge();
+      if (!bridge) {
+        store.getState().resolvePermission(notice, {
+          status: 'failed',
+          message: 'Approving a tool needs the desktop app.',
+        });
+        return;
+      }
+      try {
+        const result = await bridge.allow(rule);
+        if (result.error) {
+          store.getState().resolvePermission(notice, { status: 'failed', message: result.error });
+          return;
+        }
+        store.getState().resolvePermission(notice, { status: 'allowed', rule });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'The approval could not be saved.';
+        store.getState().resolvePermission(notice, { status: 'failed', message });
+      }
+    },
+    [store],
+  );
+
+  return { send, stop, restartConversation, detect, approve };
 };

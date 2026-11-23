@@ -3,8 +3,10 @@ import {
   isPermissionNotice,
   parseAgentStreamLine,
   readStepTextDelta,
+  readPermissionRequest,
   type AgentStep,
   type AgentUsage,
+  type PermissionRequest,
 } from './agentStreamParser';
 
 /**
@@ -33,8 +35,21 @@ export type AgentTurn = {
   errorMessage?: string;
   usage?: AgentUsage;
   durationSeconds?: number;
-  /** Set when the CLI reported a tool it could not obtain approval for. */
-  permissionNotices: string[];
+  /**
+   * Tools the CLI could not obtain approval for.
+   *
+   * `request` is null when the notice named a tool but no buildable rule, in
+   * which case the raw text is shown with no approve button: offering an
+   * approval that would write a guessed rule is worse than offering none.
+   */
+  permissionNotices: AgentPermissionNotice[];
+};
+
+export type AgentPermissionNotice = {
+  notice: string;
+  request: PermissionRequest | null;
+  /** Set once the user acts, so the same notice is not offered twice. */
+  resolution?: { status: 'allowed'; rule: string } | { status: 'failed'; message: string };
 };
 
 export type HarnessId = 'antigravity';
@@ -83,6 +98,18 @@ interface AgentSessionActions {
   applyStreamLine: (line: string) => void;
   /** Settle the turn after the process exits without a `result` event. */
   settleExit: (payload: { code: number | null; stderr?: string; stopped?: boolean }) => void;
+
+  /**
+   * Record the outcome of an approval so the UI can stop offering it.
+   *
+   * The write itself happens in the main process; this only reflects it. Keyed
+   * by the notice text because that is what the user saw and clicked.
+   */
+  resolvePermission: (
+    notice: string,
+    resolution: { status: 'allowed'; rule: string } | { status: 'failed'; message: string },
+  ) => void;
+
   reset: () => void;
 }
 
@@ -254,9 +281,16 @@ export const useAgentSessionStore = create<AgentSessionState & AgentSessionActio
     set((state) => {
       const turns = [...state.turns];
       const turn = lastTurn(turns);
-      const notices = (stderr || '')
-        .split('\n')
-        .filter((line) => line.trim() && isPermissionNotice(line));
+      // The CLI can repeat the same notice; one entry per distinct line keeps
+      // the approve list from filling with duplicates the user cannot tell apart.
+      const seen = new Set<string>();
+      const notices: AgentPermissionNotice[] = [];
+      for (const line of (stderr || '').split('\n')) {
+        const text = line.trim();
+        if (!text || seen.has(text) || !isPermissionNotice(text)) continue;
+        seen.add(text);
+        notices.push({ notice: text, request: readPermissionRequest(text) });
+      }
 
       if (turn && turn.status === 'running') {
         // No `result` event: the process died mid-turn, which is a failure the
@@ -278,6 +312,16 @@ export const useAgentSessionStore = create<AgentSessionState & AgentSessionActio
       };
     });
   },
+
+  resolvePermission: (notice, resolution) =>
+    set((state) => ({
+      turns: state.turns.map((turn) => ({
+        ...turn,
+        permissionNotices: turn.permissionNotices.map((entry) =>
+          entry.notice === notice ? { ...entry, resolution } : entry,
+        ),
+      })),
+    })),
 
   reset: () =>
     set((state) => ({

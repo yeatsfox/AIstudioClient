@@ -199,8 +199,49 @@ describe('agentSessionStore', () => {
     store.settleExit({ code: 0, stderr: 'Tool write_to_file was denied: requires approval' });
 
     expect(useAgentSessionStore.getState().turns[0].permissionNotices).toEqual([
-      'Tool write_to_file was denied: requires approval',
+      {
+        notice: 'Tool write_to_file was denied: requires approval',
+        // No action(target) in this line, so nothing is offered for approval.
+        request: null,
+      },
     ]);
+  });
+
+  it('builds an approve rule when the notice names one', () => {
+    const store = useAgentSessionStore.getState();
+    store.beginTurn('hi');
+    store.settleExit({
+      code: 0,
+      stderr: 'run_command was denied: add command(git) to permissions.allow',
+    });
+
+    const [entry] = useAgentSessionStore.getState().turns[0].permissionNotices;
+    expect(entry.request).toEqual({
+      action: 'command',
+      target: 'git',
+      rule: 'command(git)',
+      notice: 'run_command was denied: add command(git) to permissions.allow',
+    });
+  });
+
+  it('records one notice per distinct line', () => {
+    const store = useAgentSessionStore.getState();
+    store.beginTurn('hi');
+    const line = 'run_command was denied: add command(git) to permissions.allow';
+    store.settleExit({ code: 0, stderr: `${line}\n${line}\n` });
+
+    expect(useAgentSessionStore.getState().turns[0].permissionNotices).toHaveLength(1);
+  });
+
+  it('marks a notice resolved once approved', () => {
+    const store = useAgentSessionStore.getState();
+    store.beginTurn('hi');
+    const line = 'run_command was denied: add command(git) to permissions.allow';
+    store.settleExit({ code: 0, stderr: line });
+    store.resolvePermission(line, { status: 'allowed', rule: 'command(git)' });
+
+    const [entry] = useAgentSessionStore.getState().turns[0].permissionNotices;
+    expect(entry.resolution).toEqual({ status: 'allowed', rule: 'command(git)' });
   });
 
   it('ignores unparseable lines instead of throwing', () => {
