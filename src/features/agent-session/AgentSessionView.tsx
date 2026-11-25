@@ -1,6 +1,8 @@
 import React from 'react';
 import { getTranslator } from '@/i18n/coreTranslations';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useUIStore } from '@/stores/uiStore';
+import { ChatWidthControls } from '@/components/chat/width/ChatWidthControls';
 import {
   useAgentSessionStore,
   type AgentBlock,
@@ -224,7 +226,9 @@ export const AgentSessionView: React.FC = () => {
 
   const [draft, setDraft] = React.useState('');
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const areaRef = React.useRef<HTMLDivElement | null>(null);
   const { send, stop, detect, approve } = useAgentSessionRunner();
+  const setActiveView = useUIStore((state) => state.setActiveView);
 
   // Ask the main process which harnesses exist as soon as this view mounts, so
   // the "not installed" notice is accurate instead of a guess.
@@ -260,12 +264,48 @@ export const AgentSessionView: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full flex-col bg-[var(--theme-bg-primary)]">
+    // Same shell as ChatArea: grow to fill the column, never shrink below the
+    // content, and keep the scroll inside. Without `flex-grow min-w-0` this
+    // panel sized itself to its content and left a dead strip on the right that
+    // the width handles had nothing to attach to.
+    <div
+      ref={areaRef}
+      className="flex flex-col flex-grow min-w-0 h-full overflow-hidden relative bg-[var(--theme-bg-primary)]"
+    >
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--theme-border-secondary)] px-4 py-2">
         <span className="text-sm font-medium text-[var(--theme-text-primary)]">{t('agentTabTitle', 'Agent 会话')}</span>
         <span className="rounded bg-[var(--theme-bg-tertiary)] px-1.5 py-0.5 text-[11px] text-[var(--theme-text-secondary)]">
           {harnessInfo?.label ?? 'Antigravity'}
         </span>
+
+        {/*
+          The session is a mode of the same conversation window, not a separate
+          page, so the switch sits where a tab would. Chat returns to the normal
+          composer; this panel is the CLI mode of the same slot.
+        */}
+        <div
+          role="tablist"
+          aria-label={t('agentModeSwitchLabel')}
+          className="ml-2 flex items-center gap-0.5 rounded-full bg-[var(--theme-bg-tertiary)] p-0.5"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={false}
+            onClick={() => setActiveView('chat')}
+            className="rounded-full px-3 py-1 text-[11px] text-[var(--theme-text-secondary)] hover:text-[var(--theme-text-primary)]"
+          >
+            {t('agentModeChat')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected
+            className="rounded-full bg-[var(--theme-accent)] px-3 py-1 text-[11px] font-medium text-white"
+          >
+            {t('agentModeCli')}
+          </button>
+        </div>
 
         <div className="ml-auto flex items-center gap-2">
           <input
@@ -303,18 +343,27 @@ export const AgentSessionView: React.FC = () => {
         </div>
       ) : null}
 
+      {/*
+        Shares the chat width preference, so dragging the column here and in the
+        chat view agree: one window, one reading width.
+      */}
+      <ChatWidthControls containerRef={areaRef} />
+
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
-        {turns.length === 0 ? (
-          <div className="mx-auto mt-16 max-w-md text-center text-sm text-[var(--theme-text-tertiary)]">
-            {t('agentEmptyHint')}
-          </div>
-        ) : (
-          turns.map((turn) => <TurnView key={turn.id} turn={turn} t={t} onApprove={approve} />)
-        )}
+        <div className="chat-message-list-scroller mx-auto w-full" style={{ maxWidth: 'var(--chat-content-width, 44.35rem)' }}>
+          {turns.length === 0 ? (
+            <div className="mt-16 text-center text-sm text-[var(--theme-text-tertiary)]">{t('agentEmptyHint')}</div>
+          ) : (
+            turns.map((turn) => <TurnView key={turn.id} turn={turn} t={t} onApprove={approve} />)
+          )}
+        </div>
       </div>
 
       <form onSubmit={submit} className="border-t border-[var(--theme-border-secondary)] p-3">
-        <div className="flex items-end gap-2">
+        <div
+          className="mx-auto flex w-full items-end gap-2"
+          style={{ maxWidth: 'var(--chat-content-width, 44.35rem)' }}
+        >
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
